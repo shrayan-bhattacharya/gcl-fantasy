@@ -1,7 +1,7 @@
 import { redirect } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
 import Link from 'next/link'
-import { ShieldCheck, Calendar, Users, BarChart2, UserPlus, RefreshCw, UserCog } from 'lucide-react'
+import { ShieldCheck, Calendar, Users, BarChart2, RefreshCw, UserCog } from 'lucide-react'
 
 const ADMIN_NAV = [
   { href: '/admin', label: 'Overview', icon: ShieldCheck },
@@ -10,7 +10,6 @@ const ADMIN_NAV = [
   { href: '/admin/players', label: 'Players', icon: Users },
   { href: '/admin/results', label: 'Enter Results', icon: BarChart2 },
   { href: '/admin/users', label: 'Users', icon: UserCog },
-  { href: '/admin/invites', label: 'Invites', icon: UserPlus },
 ]
 
 export default async function AdminLayout({ children }: { children: React.ReactNode }) {
