@@ -9,33 +9,45 @@ import type { Database } from '@/types/database.types'
 type Player = Database['public']['Tables']['ipl_players']['Row']
 type PlayerRole = Player['role']
 
-// ─── Country → emoji flag ──────────────────────────────────────────────────
-// Keys are lowercase so the lookup is case-insensitive regardless of what's
-// stored in the DB (e.g. "India", "INDIA", "india" all resolve correctly).
-const COUNTRY_FLAGS: Record<string, string> = {
-  'india': '🇮🇳',
-  'australia': '🇦🇺',
-  'england': '🏴󠁧󠁢󠁥󠁮󠁧󠁿',
-  'south africa': '🇿🇦',
-  'west indies': '🏝️',
-  'new zealand': '🇳🇿',
-  'sri lanka': '🇱🇰',
-  'pakistan': '🇵🇰',
-  'afghanistan': '🇦🇫',
-  'bangladesh': '🇧🇩',
-  'zimbabwe': '🇿🇼',
-  'ireland': '🇮🇪',
-  'scotland': '🏴󠁧󠁢󠁳󠁣󠁴󠁿',
-  'netherlands': '🇳🇱',
+// ─── Country → flagcdn.com code ───────────────────────────────────────────
+// Keys are lowercase. West Indies has no ISO code — omitted so nothing renders.
+const COUNTRY_CODES: Record<string, string> = {
+  'india': 'in',
+  'australia': 'au',
+  'england': 'gb-eng',
+  'south africa': 'za',
+  'new zealand': 'nz',
+  'sri lanka': 'lk',
+  'afghanistan': 'af',
+  'bangladesh': 'bd',
+  'pakistan': 'pk',
+  'zimbabwe': 'zw',
+  'ireland': 'ie',
+  'scotland': 'gb-sct',
+  'netherlands': 'nl',
 }
 
-function countryFlag(country: string | null): string {
-  if (!country) return ''
-  return COUNTRY_FLAGS[country.toLowerCase().trim()] ?? ''
+function countryCode(country: string | null): string | null {
+  if (!country) return null
+  return COUNTRY_CODES[country.toLowerCase().trim()] ?? null
 }
 
-// ─── Debug: log resolved flags for first 5 PickablePlayerCard renders ──────
-let _debugCount = 0
+function CountryFlag({ country }: { country: string | null }) {
+  const [failed, setFailed] = useState(false)
+  const code = countryCode(country)
+  if (!code || failed) return null
+  return (
+    // eslint-disable-next-line @next/next/no-img-element
+    <img
+      src={`https://flagcdn.com/w20/${code}.png`}
+      width={20}
+      height={15}
+      alt={country ?? ''}
+      className="rounded-sm inline-block shrink-0"
+      onError={() => setFailed(true)}
+    />
+  )
+}
 
 // ─── Stat relevance by role ────────────────────────────────────────────────
 function isStatRelevant(stat: 'runs' | 'wickets' | 'sr' | 'eco', role: PlayerRole): boolean {
@@ -154,14 +166,6 @@ export function PickablePlayerCard({ player, isPicked, isLocked, onPick }: Picka
   const inView = useInView(ref)
   const color = ROLE_COLORS[player.role]
 
-  // Debug: log raw country + resolved flag for first 5 cards (remove once confirmed working)
-  useEffect(() => {
-    if (_debugCount < 5) {
-      _debugCount++
-      console.log(`[PlayerCard flag debug] name="${player.name}" country="${player.country}" flag="${countryFlag(player.country)}"`)
-    }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
 
   return (
     <motion.button
@@ -195,9 +199,7 @@ export function PickablePlayerCard({ player, isPicked, isLocked, onPick }: Picka
         <div className="flex-1 min-w-0">
           <p className="text-sm font-semibold text-white truncate leading-tight">{player.name}</p>
           <div className="flex items-center gap-1.5 mt-0.5">
-            {player.country && (
-              <span className="text-sm leading-none">{countryFlag(player.country)}</span>
-            )}
+            <CountryFlag country={player.country} />
             <TeamLogo team={player.team} size="xs" />
             <span className="text-[10px]" style={{ color }}>
               {ROLE_LABELS[player.role]}
@@ -244,9 +246,7 @@ export function CompactPlayerCard({ player, showStats = false, onRemove }: Compa
       <div className="flex-1 min-w-0">
         <p className="text-sm font-medium text-white truncate leading-tight">{player.name}</p>
         <div className="flex items-center gap-1.5 mt-0.5">
-          {player.country && (
-            <span className="text-sm leading-none">{countryFlag(player.country)}</span>
-          )}
+          <CountryFlag country={player.country} />
           <TeamLogo team={player.team} size="xs" />
           <span className="text-[10px] text-dark-muted">{ROLE_LABELS[player.role]}</span>
         </div>
