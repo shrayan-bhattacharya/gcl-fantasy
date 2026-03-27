@@ -1,37 +1,46 @@
 import { NextResponse } from 'next/server'
 import { createServiceClient } from '@/lib/supabase/server'
-import { scrapeMatchScorecard } from '@/lib/espn-scraper'
+import { fetchScorecard } from '@/lib/cricapi'
 import { calculateFantasyPoints } from '@/constants/scoring'
 
 export async function POST(request: Request) {
   try {
-    const { espnMatchId, matchId } = await request.json()
-    if (!espnMatchId || !matchId) {
-      return NextResponse.json({ error: 'espnMatchId and matchId required' }, { status: 400 })
+    const { cricapiMatchId, matchId } = await request.json()
+    if (!cricapiMatchId || !matchId) {
+      return NextResponse.json({ error: 'cricapiMatchId and matchId required' }, { status: 400 })
     }
 
-    const stats = await scrapeMatchScorecard(Number(espnMatchId))
-    if (!stats.length) return NextResponse.json({ error: 'No scorecard data from ESPN' }, { status: 502 })
+    const { stats, matchWinner, tossWinner, tossDecision } = await fetchScorecard(String(cricapiMatchId))
+    if (!stats.length) return NextResponse.json({ error: 'No scorecard data from CricAPI' }, { status: 502 })
 
     const supabase = await createServiceClient()
 
-    // Build espnPlayerId → DB player UUID map
-    const espnIds = stats.map(s => s.espnPlayerId)
+    // Update match result fields if we got them from the scorecard
+    if (matchWinner || tossWinner) {
+      await supabase.from('matches').update({
+        ...(matchWinner ? { match_winner: matchWinner, status: 'completed' } : {}),
+        ...(tossWinner ? { toss_winner: tossWinner } : {}),
+        ...(tossDecision ? { toss_decision: tossDecision } : {}),
+      }).eq('id', matchId)
+    }
+
+    // Build cricapiPlayerId → DB player UUID map
+    const cricapiIds = stats.map(s => s.cricapiPlayerId)
     const { data: players, error: pErr } = await supabase
       .from('ipl_players')
-      .select('id, espn_player_id')
-      .in('espn_player_id', espnIds)
+      .select('id, cricapi_player_id')
+      .in('cricapi_player_id', cricapiIds)
 
     if (pErr) return NextResponse.json({ error: pErr.message }, { status: 500 })
 
-    const playerIdMap = new Map<number, string>(
-      (players ?? []).map((p: any) => [p.espn_player_id, p.id])
+    const playerIdMap = new Map<string, string>(
+      (players ?? []).map((p: any) => [p.cricapi_player_id, p.id])
     )
 
     // Upsert player_match_stats
     const statRows = stats
       .map(s => {
-        const playerId = playerIdMap.get(s.espnPlayerId)
+        const playerId = playerIdMap.get(s.cricapiPlayerId)
         if (!playerId) return null
         return {
           player_id: playerId,
@@ -57,7 +66,6 @@ export async function POST(request: Request) {
 
     // ── Fantasy scoring (season-long squads) ──────────────────────────────
 
-    // Determine current phase
     const { data: lockSettings } = await supabase
       .from('fantasy_lock')
       .select('phase')
@@ -66,7 +74,6 @@ export async function POST(request: Request) {
 
     const phase = lockSettings?.phase ?? 'league'
 
-    // Get ALL fantasy teams for the current phase
     const { data: fantasyTeams } = await supabase
       .from('fantasy_teams')
       .select('id, user_id, batsman_1_id, batsman_2_id, bowler_1_id, bowler_2_id, flex_player_id, total_points')
@@ -75,7 +82,6 @@ export async function POST(request: Request) {
     let fantasyTeamsScored = 0
 
     if (fantasyTeams?.length) {
-      // Index the just-upserted stats by player_id for this match
       const statsByPlayer = new Map(
         statRows.filter(Boolean).map((s: any) => [s.player_id, s])
       )
@@ -101,7 +107,6 @@ export async function POST(request: Request) {
           }, { onConflict: 'fantasy_team_id,player_id,match_id' })
         }
 
-        // Recompute total from all stored scores for this team
         const { data: teamScores } = await supabase
           .from('fantasy_scores')
           .select('total_points')
@@ -114,7 +119,6 @@ export async function POST(request: Request) {
           .update({ total_points: newTotal })
           .eq('id', team.id)
 
-        // Update user totals immediately
         if (diff !== 0) {
           const { data: u } = await supabase
             .from('users')
@@ -133,7 +137,14 @@ export async function POST(request: Request) {
       }
     }
 
-    return NextResponse.json({ statsUpserted: statRows.length, fantasyTeamsScored, playerStats: statRows })
+    return NextResponse.json({
+      statsUpserted: statRows.length,
+      fantasyTeamsScored,
+      matchWinner,
+      tossWinner,
+      unmatchedPlayers: stats.length - statRows.length,
+      playerStats: statRows,
+    })
   } catch (err: any) {
     return NextResponse.json({ error: err.message }, { status: 500 })
   }

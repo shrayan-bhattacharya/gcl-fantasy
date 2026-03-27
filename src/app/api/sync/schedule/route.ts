@@ -1,11 +1,11 @@
 import { NextResponse } from 'next/server'
 import { createServiceClient } from '@/lib/supabase/server'
-import { scrapeIPLSchedule } from '@/lib/espn-scraper'
+import { fetchIPLSchedule } from '@/lib/cricapi'
 
 export async function POST() {
   try {
-    const matches = await scrapeIPLSchedule()
-    if (!matches.length) return NextResponse.json({ error: 'No matches returned from ESPN' }, { status: 502 })
+    const matches = await fetchIPLSchedule()
+    if (!matches.length) return NextResponse.json({ error: 'No matches returned from CricAPI' }, { status: 502 })
 
     const supabase = await createServiceClient()
 
@@ -15,7 +15,7 @@ export async function POST() {
       const fantasyDeadline = new Date(matchDate.getTime() - 60 * 60 * 1000)
 
       return {
-        espn_match_id: m.espnMatchId,
+        cricapi_match_id: m.cricapiMatchId,
         team_a: m.teamA,
         team_b: m.teamB,
         venue: m.venue,
@@ -31,7 +31,7 @@ export async function POST() {
 
     const { error, count } = await supabase
       .from('matches')
-      .upsert(rows, { onConflict: 'espn_match_id', ignoreDuplicates: false })
+      .upsert(rows, { onConflict: 'cricapi_match_id', ignoreDuplicates: false })
       .select('id', { count: 'exact', head: true })
 
     if (error) return NextResponse.json({ error: error.message }, { status: 500 })
