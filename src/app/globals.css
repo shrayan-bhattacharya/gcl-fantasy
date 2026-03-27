@@ -1,26 +1,203 @@
+@import url('https://fonts.googleapis.com/css2?family=Poppins:ital,wght@0,300;0,400;0,500;0,600;0,700;0,800;0,900;1,400&display=swap');
 @import "tailwindcss";
 
-:root {
-  --background: #ffffff;
-  --foreground: #171717;
-}
-
 @theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+  --color-dark-base: #080b14;
+  --color-dark-card: #0d1117;
+  --color-dark-elevated: #131b2e;
+  --color-dark-border: #1e2d47;
+  --color-dark-muted: #8892a4;
+
+  --color-neon-green: #39ff14;
+  --color-neon-blue: #0066CC;
+  --color-neon-orange: #ff6b1a;
+  --color-neon-gold: #ffd700;
+  --color-neon-cyan: #00e5ff;
+  --color-neon-purple: #bf5af2;
+
+  --color-ipl-primary: #1a6b3a;
+  --color-ipl-secondary: #ff6b1a;
+
+  --font-display: 'Poppins', sans-serif;
+  --font-body: 'Poppins', sans-serif;
+  --font-sans: 'Poppins', sans-serif;
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+/* ─── Theme CSS custom properties ─────────────────────────────────── */
+:root {
+  --theme-bg: #080b14;
+  --theme-surface: rgba(13, 17, 23, 0.7);
+  --theme-surface-elevated: rgba(19, 27, 46, 0.85);
+  --theme-border: rgba(30, 45, 71, 0.8);
+  --theme-border-subtle: rgba(255, 255, 255, 0.05);
+  --theme-text: #e8edf5;
+  --theme-text-muted: #8892a4;
+  --theme-input-bg: #0d1117;
+  --theme-scrollbar-track: #0d1117;
+  --theme-scrollbar-thumb: #1e2d47;
+  --theme-selection: rgba(0, 102, 204, 0.25);
 }
+
+html[data-theme="light"] {
+  --theme-bg: #F0F2F5;
+  --theme-surface: rgba(255, 255, 255, 0.95);
+  --theme-surface-elevated: rgba(248, 250, 252, 0.98);
+  --theme-border: rgba(0, 0, 0, 0.08);
+  --theme-border-subtle: rgba(0, 0, 0, 0.05);
+  --theme-text: #1A1A2E;
+  --theme-text-muted: #6B7280;
+  --theme-input-bg: #FFFFFF;
+  --theme-scrollbar-track: #F0F2F5;
+  --theme-scrollbar-thumb: #D0D5DE;
+  --theme-selection: rgba(0, 102, 204, 0.2);
+}
+
+/* ─── Light mode: override Tailwind utility classes ─────────────────── */
+html[data-theme="light"] body { background-color: #F0F2F5; color: #1A1A2E; }
+html[data-theme="light"] .bg-dark-base  { background-color: #F0F2F5 !important; }
+html[data-theme="light"] .bg-dark-card  { background-color: #FFFFFF !important; }
+html[data-theme="light"] .bg-dark-elevated { background-color: #F4F6F9 !important; }
+html[data-theme="light"] .border-dark-border { border-color: rgba(0, 0, 0, 0.1) !important; }
+html[data-theme="light"] .border-dark-border\/60 { border-color: rgba(0, 0, 0, 0.06) !important; }
+html[data-theme="light"] .text-white    { color: #1A1A2E !important; }
+html[data-theme="light"] .text-dark-muted { color: #6B7280 !important; }
+html[data-theme="light"] .pitch-bg      { background-image: none !important; }
+html[data-theme="light"] .stadium-bg    { background: radial-gradient(ellipse at 50% 100%, rgba(0, 102, 204, 0.05) 0%, transparent 70%) !important; }
+html[data-theme="light"] input,
+html[data-theme="light"] select,
+html[data-theme="light"] textarea       { color-scheme: light; color: #1A1A2E; background-color: #FFFFFF; }
+
+/* ─── Animations ─────────────────────────────────────────────────── */
+@keyframes float {
+  0%, 100% { transform: translateY(0px); }
+  50% { transform: translateY(-8px); }
+}
+
+@keyframes pulse-glow {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.7; }
+}
+
+@keyframes shimmer {
+  0% { background-position: -200% 0; }
+  100% { background-position: 200% 0; }
+}
+
+@keyframes spin-slow {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+@keyframes float-shape {
+  0%, 100% { transform: translateY(0px) translateX(0px) rotate(0deg); opacity: 0.06; }
+  33% { transform: translateY(-20px) translateX(10px) rotate(120deg); opacity: 0.1; }
+  66% { transform: translateY(10px) translateX(-8px) rotate(240deg); opacity: 0.07; }
+}
+
+@keyframes confetti-burst {
+  0% { transform: scale(0) rotate(0deg); opacity: 1; }
+  80% { opacity: 1; }
+  100% { transform: scale(1) rotate(360deg); opacity: 0; }
+}
+
+/* ─── Base styles ────────────────────────────────────────────────── */
+*, *::before, *::after { box-sizing: border-box; }
+html { scroll-behavior: smooth; data-scroll-behavior: smooth; }
 
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  background-color: var(--theme-bg);
+  color: var(--theme-text);
+  font-family: 'Poppins', sans-serif;
+  font-size: 15px;
+  line-height: 1.6;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  overflow-x: hidden;
+  transition: background-color 200ms ease, color 200ms ease;
 }
+
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: var(--theme-scrollbar-track); }
+::-webkit-scrollbar-thumb { background: var(--theme-scrollbar-thumb); border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: #0066CC; }
+
+::selection { background: var(--theme-selection); color: #ffffff; }
+
+/* ─── Glass morphism ─────────────────────────────────────────────── */
+.glass {
+  background: var(--theme-surface);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border: 1px solid var(--theme-border);
+  transition: background 200ms ease, border-color 200ms ease;
+}
+
+.glass-elevated {
+  background: var(--theme-surface-elevated);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border: 1px solid rgba(0, 102, 204, 0.15);
+  transition: background 200ms ease;
+}
+
+/* ─── Glow utilities ─────────────────────────────────────────────── */
+.glow-green  { box-shadow: 0 0 20px rgba(57, 255, 20, 0.3),  0 0 60px rgba(57, 255, 20, 0.1); }
+.glow-blue   { box-shadow: 0 0 20px rgba(0, 102, 204, 0.4),  0 0 60px rgba(0, 102, 204, 0.15); }
+.glow-orange { box-shadow: 0 0 20px rgba(255, 107, 26, 0.3), 0 0 60px rgba(255, 107, 26, 0.1); }
+.glow-gold   { box-shadow: 0 0 20px rgba(255, 215, 0, 0.35), 0 0 60px rgba(255, 215, 0, 0.12); }
+.glow-cyan   { box-shadow: 0 0 20px rgba(0, 229, 255, 0.3),  0 0 60px rgba(0, 229, 255, 0.1); }
+
+.text-glow-green { text-shadow: 0 0 20px rgba(57, 255, 20, 0.8); }
+.text-glow-blue  { text-shadow: 0 0 20px rgba(0, 102, 204, 0.8); }
+.text-glow-orange { text-shadow: 0 0 20px rgba(255, 107, 26, 0.8); }
+.text-glow-gold  { text-shadow: 0 0 20px rgba(255, 215, 0, 0.8); }
+
+/* ─── Gradient text ──────────────────────────────────────────────── */
+.gradient-text {
+  background: linear-gradient(135deg, #0066CC, #00e5ff);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+.gradient-text-fire {
+  background: linear-gradient(135deg, #ff6b1a, #ffd700);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+/* ─── Backgrounds ────────────────────────────────────────────────── */
+.pitch-bg {
+  background-image:
+    repeating-linear-gradient(0deg,  transparent, transparent 40px, rgba(0,102,204,0.012) 40px, rgba(0,102,204,0.012) 41px),
+    repeating-linear-gradient(90deg, transparent, transparent 40px, rgba(0,102,204,0.012) 40px, rgba(0,102,204,0.012) 41px);
+}
+
+.stadium-bg {
+  background: radial-gradient(ellipse at 50% 100%, rgba(0, 102, 204, 0.08) 0%, transparent 70%);
+}
+
+/* ─── Rank styles ────────────────────────────────────────────────── */
+.rank-gold   { color: #ffd700; text-shadow: 0 0 15px rgba(255, 215, 0, 0.8); }
+.rank-silver { color: #c0c0c0; text-shadow: 0 0 15px rgba(192, 192, 192, 0.6); }
+.rank-bronze { color: #cd7f32; text-shadow: 0 0 15px rgba(205, 127, 50, 0.6); }
+
+/* ─── Skeleton ───────────────────────────────────────────────────── */
+.skeleton {
+  background: linear-gradient(90deg, #0d1117 25%, #131b2e 50%, #0d1117 75%);
+  background-size: 200% 100%;
+  animation: shimmer 1.5s ease-in-out infinite;
+}
+
+/* ─── Hover lift ─────────────────────────────────────────────────── */
+.hover-lift {
+  transition: transform 200ms ease, box-shadow 200ms ease;
+}
+.hover-lift:hover {
+  transform: translateY(-2px);
+}
+
+/* ─── Focus + form ───────────────────────────────────────────────── */
+:focus-visible { outline: 2px solid #0066CC; outline-offset: 2px; }
+input, textarea, select { color-scheme: dark; }

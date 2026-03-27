@@ -1,0 +1,507 @@
+'use client'
+
+import { motion, AnimatePresence } from 'framer-motion'
+import { useState, useTransition, useEffect, useMemo } from 'react'
+import { PageWrapper, AnimatedSection } from '@/components/layout/PageWrapper'
+import { TeamLogo } from '@/components/ui/TeamLogo'
+import { IPL_TEAMS, ROLE_COLORS, ROLE_ICONS, ROLE_LABELS } from '@/constants/ipl'
+import { formatDayLabel, formatCountdown } from '@/lib/utils'
+import { createClient } from '@/lib/supabase/client'
+import { Search, CheckCircle, Lock, Zap, X, Filter, Calendar } from 'lucide-react'
+import type { Database } from '@/types/database.types'
+
+type Player = Database['public']['Tables']['ipl_players']['Row']
+type MatchRow = Database['public']['Tables']['matches']['Row']
+
+export interface MatchDayData {
+  matchDay: string        // YYYY-MM-DD in IST
+  matches: MatchRow[]
+  isLocked: boolean       // server-computed snapshot; client recomputes live
+  lockTime: string        // ISO string — 1hr before first match
+  unlockTime: string      // ISO string — next day 1:00 AM IST
+  existingTeam: any | null
+}
+
+interface SelectedTeam {
+  batsman_1: Player | null
+  batsman_2: Player | null
+  bowler_1: Player | null
+  bowler_2: Player | null
+  flex: Player | null
+}
+
+const emptyTeam: SelectedTeam = { batsman_1: null, batsman_2: null, bowler_1: null, bowler_2: null, flex: null }
+
+interface Props {
+  players: Player[]
+  matchDays: MatchDayData[]
+  userId: string
+}
+
+const SLOT_LABELS = [
+  { key: 'batsman_1', label: 'Batsman 1', role: 'batsman' },
+  { key: 'batsman_2', label: 'Batsman 2', role: 'batsman' },
+  { key: 'bowler_1', label: 'Bowler 1', role: 'bowler' },
+  { key: 'bowler_2', label: 'Bowler 2', role: 'bowler' },
+  { key: 'flex', label: 'All-Rounder / WK', role: 'flex' },
+] as const
+
+function isDayLocked(day: MatchDayData, now: Date): boolean {
+  const lockTime = new Date(day.lockTime)
+  const unlockTime = new Date(day.unlockTime)
+  return (now >= lockTime && now < unlockTime) || day.matches.every(m => m.status === 'completed')
+}
+
+export function FantasyClient({ players, matchDays, userId }: Props) {
+  const [selectedDay, setSelectedDay] = useState<MatchDayData | null>(matchDays[0] ?? null)
+  const [team, setTeam] = useState<SelectedTeam>(() => {
+    const first = matchDays[0]
+    if (first?.existingTeam) {
+      return {
+        batsman_1: first.existingTeam.batsman_1,
+        batsman_2: first.existingTeam.batsman_2,
+        bowler_1: first.existingTeam.bowler_1,
+        bowler_2: first.existingTeam.bowler_2,
+        flex: first.existingTeam.flex,
+      }
+    }
+    return emptyTeam
+  })
+  const [activeSlot, setActiveSlot] = useState<keyof SelectedTeam | null>('batsman_1')
+  const [search, setSearch] = useState('')
+  const [filterTeam, setFilterTeam] = useState<string>('all')
+  const [saved, setSaved] = useState(false)
+  const [showConfetti, setShowConfetti] = useState(false)
+  const [isPending, startTransition] = useTransition()
+  const [now, setNow] = useState(() => new Date())
+
+  // 1-second ticker for live countdown
+  useEffect(() => {
+    const timer = setInterval(() => setNow(new Date()), 1000)
+    return () => clearInterval(timer)
+  }, [])
+
+  // Confetti burst when squad becomes complete
+  useEffect(() => {
+    if (Object.values(team).every(Boolean)) {
+      setShowConfetti(true)
+      const t = setTimeout(() => setShowConfetti(false), 1400)
+      return () => clearTimeout(t)
+    }
+  }, [team])
+
+  const supabase = createClient()
+
+  const isLocked = useMemo(() => {
+    if (!selectedDay) return true
+    return isDayLocked(selectedDay, now)
+  }, [selectedDay, now])
+
+  const msUntilLock = selectedDay
+    ? Math.max(0, new Date(selectedDay.lockTime).getTime() - now.getTime())
+    : 0
+
+  function handleDaySelect(day: MatchDayData) {
+    setSelectedDay(day)
+    if (day.existingTeam) {
+      setTeam({
+        batsman_1: day.existingTeam.batsman_1,
+        batsman_2: day.existingTeam.batsman_2,
+        bowler_1: day.existingTeam.bowler_1,
+        bowler_2: day.existingTeam.bowler_2,
+        flex: day.existingTeam.flex,
+      })
+    } else {
+      setTeam(emptyTeam)
+    }
+    setActiveSlot('batsman_1')
+    setSaved(false)
+  }
+
+  // Filter players for the active slot
+  const slotRoleFilter = activeSlot
+    ? SLOT_LABELS.find(s => s.key === activeSlot)?.role
+    : null
+
+  const filteredPlayers = players.filter(p => {
+    if (search && !p.name.toLowerCase().includes(search.toLowerCase()) && !p.team.toLowerCase().includes(search.toLowerCase())) return false
+    if (filterTeam !== 'all' && p.team !== filterTeam) return false
+
+    if (activeSlot === 'flex') {
+      return p.role === 'allrounder' || p.role === 'wicketkeeper'
+    }
+    if (slotRoleFilter && slotRoleFilter !== 'flex') {
+      return p.role === slotRoleFilter
+    }
+    return true
+  })
+
+  // Prevent double-picking
+  const pickedIds = new Set(Object.values(team).filter(Boolean).map(p => p!.id))
+
+  function pickPlayer(player: Player) {
+    if (!activeSlot) return
+    if (pickedIds.has(player.id)) return
+
+    setTeam(prev => ({ ...prev, [activeSlot]: player }))
+
+    const slotKeys = SLOT_LABELS.map(s => s.key)
+    const currentIdx = slotKeys.indexOf(activeSlot)
+    const nextSlot = slotKeys.slice(currentIdx + 1).find(k => !team[k])
+    setActiveSlot(nextSlot ?? null)
+  }
+
+  function removePlayer(slot: keyof SelectedTeam) {
+    setTeam(prev => ({ ...prev, [slot]: null }))
+    setActiveSlot(slot)
+  }
+
+  const isComplete = Object.values(team).every(Boolean)
+
+  async function saveTeam() {
+    if (!selectedDay || !isComplete) return
+    startTransition(async () => {
+      const { error } = await supabase.from('fantasy_teams').upsert({
+        user_id: userId,
+        match_day: selectedDay.matchDay,
+        batsman_1_id: team.batsman_1!.id,
+        batsman_2_id: team.batsman_2!.id,
+        bowler_1_id: team.bowler_1!.id,
+        bowler_2_id: team.bowler_2!.id,
+        flex_player_id: team.flex!.id,
+      }, { onConflict: 'user_id,match_day' })
+
+      if (!error) {
+        setSaved(true)
+        setTimeout(() => setSaved(false), 3000)
+      }
+    })
+  }
+
+  // Matches playing teams for the selected day (for team filter context)
+  const dayTeams = selectedDay
+    ? [...new Set(selectedDay.matches.flatMap(m => [m.team_a, m.team_b]))]
+    : []
+
+  return (
+    <PageWrapper title="Fantasy Squad" subtitle="Pick your 5-player squad for each match day">
+      {/* Day selector */}
+      <AnimatedSection className="mb-5">
+        <div className="flex gap-2 overflow-x-auto pb-2 scrollbar-none">
+          {matchDays.map(day => {
+            const dayLocked = isDayLocked(day, now)
+            const hasTeam = !!day.existingTeam
+            const isSelected = selectedDay?.matchDay === day.matchDay
+
+            return (
+              <motion.button
+                key={day.matchDay}
+                whileHover={{ scale: 1.02 }}
+                whileTap={{ scale: 0.97 }}
+                onClick={() => handleDaySelect(day)}
+                className={`flex flex-col items-start gap-1.5 p-3 rounded-xl border shrink-0 transition-all duration-200 min-w-[150px] text-left
+                  ${isSelected
+                    ? 'border-neon-blue/50 bg-neon-blue/10'
+                    : 'border-dark-border glass hover:border-white/20'
+                  }`}
+              >
+                <span className={`text-xs font-bold ${isSelected ? 'text-neon-blue' : 'text-white'}`}>
+                  {formatDayLabel(day.matchDay)}
+                </span>
+                <div className="space-y-0.5 w-full">
+                  {day.matches.map(m => (
+                    <div key={m.id} className="flex items-center gap-1.5 text-[10px] text-dark-muted">
+                      <TeamLogo team={m.team_a} size="xs" />
+                      <span>vs</span>
+                      <TeamLogo team={m.team_b} size="xs" />
+                      <span className="truncate">{m.team_a} vs {m.team_b}</span>
+                    </div>
+                  ))}
+                </div>
+                {dayLocked ? (
+                  <span className="flex items-center gap-1 text-[10px] text-neon-orange">
+                    <Lock className="w-2.5 h-2.5" /> Locked
+                  </span>
+                ) : hasTeam ? (
+                  <span className="flex items-center gap-1 text-[10px] text-neon-green">
+                    <CheckCircle className="w-2.5 h-2.5" /> Squad set
+                  </span>
+                ) : (
+                  <span className="text-[10px] text-dark-muted/60">No squad yet</span>
+                )}
+              </motion.button>
+            )
+          })}
+          {matchDays.length === 0 && (
+            <p className="text-dark-muted text-sm py-3">No upcoming match days</p>
+          )}
+        </div>
+      </AnimatedSection>
+
+      {selectedDay && (
+        <div className="grid lg:grid-cols-5 gap-4">
+          {/* Left: Squad builder */}
+          <AnimatedSection className="lg:col-span-2">
+            <div className="glass rounded-xl border border-dark-border sticky top-20">
+              {/* Day header */}
+              <div className="px-4 py-3 border-b border-white/5">
+                <div className="flex items-start justify-between gap-2">
+                  <div>
+                    <h3 className="text-sm font-bold text-white" style={{ fontFamily: 'Outfit, sans-serif' }}>
+                      {formatDayLabel(selectedDay.matchDay)}
+                    </h3>
+                    <p className="text-xs text-dark-muted">
+                      {selectedDay.matches.map(m => `${m.team_a} vs ${m.team_b}`).join(' · ')}
+                    </p>
+                  </div>
+                  <div className="shrink-0 text-right">
+                    {isLocked ? (
+                      <span className="flex items-center gap-1 text-[10px] text-neon-orange">
+                        <Lock className="w-2.5 h-2.5" />
+                        Locked until 1:00 AM
+                      </span>
+                    ) : msUntilLock > 0 ? (
+                      <span className="text-[10px] text-dark-muted">
+                        Locks in{' '}
+                        <span className="text-neon-orange font-semibold">{formatCountdown(msUntilLock)}</span>
+                      </span>
+                    ) : null}
+                  </div>
+                </div>
+              </div>
+
+              {isLocked ? (
+                <div className="p-6 text-center">
+                  <Lock className="w-8 h-8 mx-auto text-neon-orange mb-2 opacity-60" />
+                  <p className="text-sm text-dark-muted">Squad selection locked</p>
+                  <p className="text-xs text-dark-muted/60 mt-1">Unlocks at 1:00 AM</p>
+                </div>
+              ) : (
+                <div className="p-3 space-y-2">
+                  {SLOT_LABELS.map(slot => {
+                    const player = team[slot.key]
+                    const isActive = activeSlot === slot.key
+                    return (
+                      <motion.div
+                        key={slot.key}
+                        whileHover={{ scale: 1.02 }}
+                        onClick={() => !player && setActiveSlot(slot.key)}
+                        className={`flex items-center gap-3 p-3 rounded-xl border cursor-pointer transition-all duration-200
+                          ${isActive && !player ? 'border-neon-blue/50 bg-neon-blue/5 shadow-[0_0_12px_rgba(0,102,204,0.12)]' : ''}
+                          ${player ? 'border-dark-border bg-dark-elevated' : 'border-dashed border-dark-border hover:border-dark-muted'}
+                        `}
+                      >
+                        <div className="w-7 h-7 rounded-lg flex items-center justify-center text-sm shrink-0"
+                          style={{ backgroundColor: ROLE_COLORS[slot.role === 'flex' ? 'allrounder' : slot.role] + '18' }}>
+                          {ROLE_ICONS[slot.role === 'flex' ? 'allrounder' : slot.role]}
+                        </div>
+                        {player ? (
+                          <>
+                            <div className="flex-1 min-w-0">
+                              <p className="text-sm font-medium text-white truncate">{player.name}</p>
+                              <div className="flex items-center gap-1.5 mt-0.5">
+                                <TeamLogo team={player.team} size="xs" />
+                                <span className="text-[10px] text-dark-muted">{ROLE_LABELS[player.role]}</span>
+                              </div>
+                            </div>
+                            <motion.button
+                              whileHover={{ scale: 1.2 }}
+                              whileTap={{ scale: 0.9 }}
+                              onClick={e => { e.stopPropagation(); removePlayer(slot.key) }}
+                              className="p-1 rounded-lg text-dark-muted hover:text-red-400 hover:bg-red-500/10 transition-colors"
+                            >
+                              <X className="w-3.5 h-3.5" />
+                            </motion.button>
+                          </>
+                        ) : (
+                          <span className={`text-xs ${isActive ? 'text-neon-blue' : 'text-dark-muted'}`}>
+                            {isActive ? `→ Select ${slot.label}` : slot.label}
+                          </span>
+                        )}
+                      </motion.div>
+                    )
+                  })}
+
+                  {/* Confetti burst */}
+                  <AnimatePresence>
+                    {showConfetti && (
+                      <div className="relative h-0 overflow-visible">
+                        {[...Array(10)].map((_, i) => (
+                          <motion.div
+                            key={i}
+                            className="absolute w-2 h-2 rounded-full pointer-events-none"
+                            style={{
+                              backgroundColor: ['#0066CC', '#FFD700', '#39ff14', '#00e5ff', '#bf5af2'][i % 5],
+                              left: '50%', top: '-8px',
+                            }}
+                            initial={{ x: 0, y: 0, opacity: 1, scale: 0 }}
+                            animate={{
+                              x: Math.cos((i / 10) * Math.PI * 2) * (50 + i * 6),
+                              y: Math.sin((i / 10) * Math.PI * 2) * (40 + i * 5) - 20,
+                              opacity: 0,
+                              scale: [0, 1.5, 0],
+                            }}
+                            transition={{ duration: 0.9, ease: 'easeOut' }}
+                          />
+                        ))}
+                      </div>
+                    )}
+                  </AnimatePresence>
+
+                  <motion.button
+                    disabled={!isComplete || isPending}
+                    whileHover={isComplete ? { scale: 1.02 } : {}}
+                    whileTap={isComplete ? { scale: 0.98 } : {}}
+                    onClick={saveTeam}
+                    className={`w-full mt-2 py-3 rounded-xl text-sm font-bold flex items-center justify-center gap-2 transition-all duration-300
+                      ${saved
+                        ? 'bg-neon-blue/20 text-neon-blue border border-neon-blue/30'
+                        : isComplete
+                          ? 'bg-neon-blue text-white shadow-[0_0_20px_rgba(0,102,204,0.5)]'
+                          : 'bg-dark-elevated text-dark-muted border border-dark-border cursor-not-allowed'
+                      }`}
+                  >
+                    {saved ? <><CheckCircle className="w-4 h-4" /> Squad Saved!</> :
+                      isPending ? 'Saving...' :
+                      isComplete ? <><Zap className="w-4 h-4" /> Lock In Squad</> :
+                      `Pick ${5 - Object.values(team).filter(Boolean).length} more player${5 - Object.values(team).filter(Boolean).length !== 1 ? 's' : ''}`
+                    }
+                  </motion.button>
+                </div>
+              )}
+            </div>
+          </AnimatedSection>
+
+          {/* Right: Player picker */}
+          <AnimatedSection className="lg:col-span-3">
+            {/* Playing teams hint */}
+            {dayTeams.length > 0 && !isLocked && (
+              <div className="flex items-center gap-2 px-3 py-2 rounded-xl bg-dark-elevated border border-dark-border mb-3 text-xs text-dark-muted">
+                <Calendar className="w-3.5 h-3.5 shrink-0" />
+                <span>Teams playing today:</span>
+                <div className="flex items-center gap-1.5">
+                  {dayTeams.map(t => (
+                    <span key={t} className="flex items-center gap-1">
+                      <TeamLogo team={t} size="xs" />
+                      <span className="text-white font-medium">{t}</span>
+                    </span>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Search + team filter */}
+            <div className="flex flex-wrap gap-2 mb-4">
+              <div className="relative flex-1 min-w-[180px]">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-dark-muted pointer-events-none" />
+                <input
+                  value={search}
+                  onChange={e => setSearch(e.target.value)}
+                  placeholder="Search players..."
+                  className="w-full bg-dark-card border border-dark-border rounded-xl pl-10 pr-4 py-2 text-sm text-white placeholder:text-dark-muted/40 focus:outline-none focus:border-neon-blue/50 focus:ring-1 focus:ring-neon-blue/20 transition-all"
+                />
+              </div>
+              <select
+                value={filterTeam}
+                onChange={e => setFilterTeam(e.target.value)}
+                className="bg-dark-card border border-dark-border rounded-xl px-3 py-2 text-sm text-white focus:outline-none focus:border-neon-blue/50 transition-all"
+              >
+                <option value="all">All Teams</option>
+                {Object.keys(IPL_TEAMS).map(t => <option key={t} value={t}>{t}</option>)}
+              </select>
+            </div>
+
+            {/* Active slot indicator */}
+            {activeSlot && !isLocked && (
+              <motion.div
+                initial={{ opacity: 0, y: -8 }}
+                animate={{ opacity: 1, y: 0 }}
+                className="flex items-center gap-2 px-3 py-2 rounded-xl bg-neon-blue/5 border border-neon-blue/20 mb-3 text-xs text-neon-blue"
+              >
+                <div className="w-2 h-2 rounded-full bg-neon-blue animate-ping" />
+                Selecting: <strong>{SLOT_LABELS.find(s => s.key === activeSlot)?.label}</strong>
+                {activeSlot !== 'flex'
+                  ? ` — pick a ${ROLE_LABELS[SLOT_LABELS.find(s => s.key === activeSlot)?.role ?? '']}`
+                  : ' — pick an All-Rounder or Wicketkeeper'
+                }
+              </motion.div>
+            )}
+
+            {/* Players grid */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 max-h-[600px] overflow-y-auto pr-1">
+              <AnimatePresence mode="popLayout">
+                {filteredPlayers.map((player, i) => {
+                  const isPicked = pickedIds.has(player.id)
+                  return (
+                    <motion.button
+                      key={player.id}
+                      layout
+                      initial={{ opacity: 0, scale: 0.95 }}
+                      animate={{ opacity: 1, scale: 1 }}
+                      exit={{ opacity: 0, scale: 0.95 }}
+                      transition={{ delay: i * 0.02, type: 'spring', stiffness: 300, damping: 25 }}
+                      whileHover={!isPicked ? { scale: 1.02, y: -2 } : {}}
+                      whileTap={!isPicked ? { scale: 0.98 } : {}}
+                      onClick={() => !isPicked && !isLocked && pickPlayer(player)}
+                      disabled={isPicked || isLocked}
+                      className={`text-left p-3 rounded-xl border flex items-center gap-3 transition-all duration-200 group
+                        ${isPicked
+                          ? 'border-neon-blue/40 bg-neon-blue/8 opacity-70 cursor-not-allowed shadow-[0_0_12px_rgba(0,102,204,0.15)]'
+                          : 'border-dark-border bg-dark-card hover:border-neon-blue/40 hover:bg-dark-elevated cursor-pointer'
+                        }
+                        ${isLocked ? 'cursor-not-allowed opacity-50' : ''}
+                      `}
+                    >
+                      <div
+                        className="w-9 h-9 rounded-xl flex items-center justify-center text-base shrink-0 transition-transform group-hover:scale-110"
+                        style={{ backgroundColor: ROLE_COLORS[player.role] + '18', border: `1px solid ${ROLE_COLORS[player.role]}30` }}
+                      >
+                        {ROLE_ICONS[player.role]}
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-semibold text-white truncate">{player.name}</p>
+                        <div className="flex items-center gap-1.5 mt-0.5">
+                          <TeamLogo team={player.team} size="xs" />
+                          <span className="text-[10px]" style={{ color: ROLE_COLORS[player.role] }}>
+                            {ROLE_LABELS[player.role]}
+                          </span>
+                        </div>
+                      </div>
+                      {isPicked && <CheckCircle className="w-4 h-4 text-neon-blue shrink-0" />}
+                    </motion.button>
+                  )
+                })}
+              </AnimatePresence>
+              {filteredPlayers.length === 0 && (
+                <div className="col-span-2 text-center py-10 text-dark-muted">
+                  <Filter className="w-8 h-8 mx-auto mb-2 opacity-30" />
+                  <p className="text-sm">No players match your filters</p>
+                </div>
+              )}
+            </div>
+          </AnimatedSection>
+        </div>
+      )}
+
+      {/* Scoring guide */}
+      <AnimatedSection className="mt-6">
+        <h3 className="text-xs font-bold text-dark-muted mb-2 uppercase tracking-wider">Fantasy Points Guide</h3>
+        <div className="flex gap-2">
+          {[
+            { icon: '🏏', label: 'Per run scored', pts: '1 pt' },
+            { icon: '🎯', label: 'Per wicket taken', pts: '10 pts' },
+          ].map(item => (
+            <div key={item.label} className="glass rounded-lg px-4 py-3 flex items-center gap-3 flex-1">
+              <span className="text-xl">{item.icon}</span>
+              <span className="text-xs text-dark-muted flex-1">{item.label}</span>
+              <span className="text-sm font-bold text-neon-blue">{item.pts}</span>
+            </div>
+          ))}
+        </div>
+        <p className="text-xs text-dark-muted mt-3 text-center">
+          One squad per match day · Same squad scores points from all matches on that day
+        </p>
+      </AnimatedSection>
+    </PageWrapper>
+  )
+}
