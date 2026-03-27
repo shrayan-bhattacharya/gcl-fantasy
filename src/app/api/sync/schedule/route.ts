@@ -36,7 +36,7 @@ export async function POST() {
 
     if (error) return NextResponse.json({ error: error.message }, { status: 500 })
 
-    return NextResponse.json({ synced: matches.length, upserted: count })
+    return NextResponse.json({ synced: matches.length, upserted: count, sample: rows.slice(0, 5) })
   } catch (err: any) {
     return NextResponse.json({ error: err.message }, { status: 500 })
   }

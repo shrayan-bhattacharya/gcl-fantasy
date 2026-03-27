@@ -133,7 +133,7 @@ export async function POST(request: Request) {
       }
     }
 
-    return NextResponse.json({ statsUpserted: statRows.length, fantasyTeamsScored })
+    return NextResponse.json({ statsUpserted: statRows.length, fantasyTeamsScored, playerStats: statRows })
   } catch (err: any) {
     return NextResponse.json({ error: err.message }, { status: 500 })
   }
