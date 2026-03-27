@@ -28,7 +28,7 @@ export async function POST(request: Request) {
 
     if (error) return NextResponse.json({ error: error.message }, { status: 500 })
 
-    return NextResponse.json({ synced: players.length, upserted: count, team: team ?? 'all' })
+    return NextResponse.json({ synced: players.length, upserted: count, team: team ?? 'all', sample: rows.slice(0, 5) })
   } catch (err: any) {
     return NextResponse.json({ error: err.message }, { status: 500 })
   }

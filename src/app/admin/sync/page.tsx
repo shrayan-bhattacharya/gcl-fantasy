@@ -9,6 +9,7 @@ interface SyncResult {
   ok: boolean
   message: string
   detail?: string
+  raw?: any
 }
 
 function ResultBadge({ result }: { result: SyncResult }) {
@@ -18,15 +19,22 @@ function ResultBadge({ result }: { result: SyncResult }) {
         initial={{ opacity: 0, y: -6 }}
         animate={{ opacity: 1, y: 0 }}
         exit={{ opacity: 0 }}
-        className={`flex items-center gap-2 text-sm px-3 py-2 rounded-lg mt-3 ${
-          result.ok ? 'bg-neon-green/10 text-neon-green border border-neon-green/20' : 'bg-red-500/10 text-red-400 border border-red-500/20'
-        }`}
+        className="mt-3 space-y-2"
       >
-        {result.ok ? <CheckCircle className="w-4 h-4 shrink-0" /> : <XCircle className="w-4 h-4 shrink-0" />}
-        <div>
-          <p className="font-medium">{result.message}</p>
-          {result.detail && <p className="text-xs opacity-70 mt-0.5">{result.detail}</p>}
+        <div className={`flex items-center gap-2 text-sm px-3 py-2 rounded-lg ${
+          result.ok ? 'bg-neon-green/10 text-neon-green border border-neon-green/20' : 'bg-red-500/10 text-red-400 border border-red-500/20'
+        }`}>
+          {result.ok ? <CheckCircle className="w-4 h-4 shrink-0" /> : <XCircle className="w-4 h-4 shrink-0" />}
+          <div>
+            <p className="font-medium">{result.message}</p>
+            {result.detail && <p className="text-xs opacity-70 mt-0.5">{result.detail}</p>}
+          </div>
         </div>
+        {result.raw !== undefined && (
+          <pre className="text-[11px] text-dark-muted bg-dark-base border border-dark-border rounded-xl p-3 overflow-auto max-h-80 leading-relaxed whitespace-pre-wrap break-all">
+            {JSON.stringify(result.raw, null, 2)}
+          </pre>
+        )}
       </motion.div>
     </AnimatePresence>
   )
@@ -91,8 +99,8 @@ export default function SyncPage() {
     try {
       const res = await fetch('/api/sync/schedule', { method: 'POST' })
       const json = await res.json()
-      if (!res.ok) setScheduleResult({ ok: false, message: 'Sync failed', detail: json.error })
-      else setScheduleResult({ ok: true, message: `Synced ${json.synced} matches`, detail: `${json.upserted ?? json.synced} rows upserted` })
+      if (!res.ok) setScheduleResult({ ok: false, message: 'Sync failed', detail: json.error, raw: json })
+      else setScheduleResult({ ok: true, message: `Synced ${json.synced} matches`, detail: `${json.upserted ?? json.synced} rows upserted`, raw: json })
     } catch (e: any) {
       setScheduleResult({ ok: false, message: 'Network error', detail: e.message })
     }
@@ -109,8 +117,8 @@ export default function SyncPage() {
         body: JSON.stringify({ team: squadTeam === 'all' ? undefined : squadTeam }),
       })
       const json = await res.json()
-      if (!res.ok) setSquadResult({ ok: false, message: 'Sync failed', detail: json.error })
-      else setSquadResult({ ok: true, message: `Synced ${json.synced} players`, detail: `Team: ${json.team}` })
+      if (!res.ok) setSquadResult({ ok: false, message: 'Sync failed', detail: json.error, raw: json })
+      else setSquadResult({ ok: true, message: `Synced ${json.synced} players`, detail: `Team: ${json.team}`, raw: json })
     } catch (e: any) {
       setSquadResult({ ok: false, message: 'Network error', detail: e.message })
     }
@@ -128,11 +136,12 @@ export default function SyncPage() {
         body: JSON.stringify({ espnMatchId: Number(espnMatchId), matchId: dbMatchId }),
       })
       const json = await res.json()
-      if (!res.ok) setScorecardResult({ ok: false, message: 'Sync failed', detail: json.error })
+      if (!res.ok) setScorecardResult({ ok: false, message: 'Sync failed', detail: json.error, raw: json })
       else setScorecardResult({
         ok: true,
         message: `Scorecard synced`,
         detail: `${json.statsUpserted} player stats · ${json.fantasyTeamsScored} fantasy teams scored`,
+        raw: json,
       })
     } catch (e: any) {
       setScorecardResult({ ok: false, message: 'Network error', detail: e.message })
