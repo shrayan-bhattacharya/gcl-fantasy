@@ -66,7 +66,6 @@ export function DashboardClient({ profile, rank, upcomingMatches, recentPredicti
       value: profile?.total_score ?? 0,
       icon: Trophy,
       color: '#ffd700',
-      glow: 'rgba(255,215,0,0.3)',
       suffix: 'pts',
     },
     {
@@ -74,7 +73,6 @@ export function DashboardClient({ profile, rank, upcomingMatches, recentPredicti
       value: profile?.prediction_score ?? 0,
       icon: Target,
       color: '#0066CC',
-      glow: 'rgba(0,102,204,0.3)',
       suffix: 'pts',
     },
     {
@@ -82,7 +80,6 @@ export function DashboardClient({ profile, rank, upcomingMatches, recentPredicti
       value: profile?.fantasy_score ?? 0,
       icon: Zap,
       color: '#00e5ff',
-      glow: 'rgba(0,229,255,0.3)',
       suffix: 'pts',
     },
     {
@@ -90,7 +87,6 @@ export function DashboardClient({ profile, rank, upcomingMatches, recentPredicti
       value: rank,
       icon: TrendingUp,
       color: '#ff6b1a',
-      glow: 'rgba(255,107,26,0.3)',
       prefix: '#',
     },
   ]
@@ -150,9 +146,7 @@ export function DashboardClient({ profile, rank, upcomingMatches, recentPredicti
           <motion.div key={stat.label} variants={cardVariants}>
             <div
               className="glass rounded-xl p-4 border border-dark-border relative overflow-hidden group hover:scale-[1.03] transition-transform duration-300"
-              style={{ boxShadow: `0 0 30px ${stat.glow}` }}
             >
-              <div className="absolute inset-0 opacity-5 rounded-xl" style={{ background: `radial-gradient(circle at top right, ${stat.color}, transparent 70%)` }} />
               <div className="flex items-center justify-between mb-3">
                 <span className="text-xs text-dark-muted font-medium">{stat.label}</span>
                 <div className="w-7 h-7 rounded-lg flex items-center justify-center" style={{ backgroundColor: stat.color + '18', border: `1px solid ${stat.color}30` }}>
