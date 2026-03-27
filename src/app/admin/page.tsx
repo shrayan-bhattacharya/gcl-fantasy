@@ -1,13 +1,15 @@
 import { createClient } from '@/lib/supabase/server'
 import Link from 'next/link'
 import { Calendar, Users, BarChart2, UserPlus } from 'lucide-react'
+import { FantasyLockControl } from './FantasyLockControl'
 
 export default async function AdminOverview() {
   const supabase = await createClient()
-  const [{ count: matchCount }, { count: playerCount }, { count: userCount }] = await Promise.all([
+  const [{ count: matchCount }, { count: playerCount }, { count: userCount }, { data: lockSettings }] = await Promise.all([
     supabase.from('matches').select('*', { count: 'exact', head: true }),
     supabase.from('ipl_players').select('*', { count: 'exact', head: true }),
     supabase.from('users').select('*', { count: 'exact', head: true }),
+    supabase.from('fantasy_lock').select('is_locked, phase').limit(1).single(),
   ])
 
   const cards = [
@@ -31,7 +33,14 @@ export default async function AdminOverview() {
           </Link>
         ))}
       </div>
-      <div className="glass rounded-xl border border-dark-border p-6">
+
+      {/* Fantasy Lock Control */}
+      <FantasyLockControl
+        initialLocked={lockSettings?.is_locked ?? false}
+        initialPhase={lockSettings?.phase ?? 'league'}
+      />
+
+      <div className="glass rounded-xl border border-dark-border p-6 mt-6">
         <h2 className="text-sm font-bold text-white mb-3">Quick Actions</h2>
         <div className="flex flex-wrap gap-3">
           <Link href="/admin/matches" className="px-4 py-2 rounded-xl bg-neon-cyan/10 text-neon-cyan border border-neon-cyan/20 text-sm font-medium hover:bg-neon-cyan/20 transition-colors">+ Add Match</Link>

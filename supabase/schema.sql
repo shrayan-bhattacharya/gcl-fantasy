@@ -80,7 +80,7 @@ CREATE TABLE public.predictions (
 CREATE TABLE public.fantasy_teams (
   id              UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
   user_id         UUID NOT NULL REFERENCES public.users(id) ON DELETE CASCADE,
-  match_id        UUID NOT NULL REFERENCES public.matches(id) ON DELETE CASCADE,
+  phase           TEXT NOT NULL DEFAULT 'league' CHECK (phase IN ('league', 'knockout')),
   batsman_1_id    UUID NOT NULL REFERENCES public.ipl_players(id),
   batsman_2_id    UUID NOT NULL REFERENCES public.ipl_players(id),
   bowler_1_id     UUID NOT NULL REFERENCES public.ipl_players(id),
@@ -89,8 +89,19 @@ CREATE TABLE public.fantasy_teams (
   total_points    INTEGER NOT NULL DEFAULT 0,
   is_scored       BOOLEAN NOT NULL DEFAULT FALSE,
   created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-  UNIQUE(user_id, match_id)
+  UNIQUE(user_id, phase)
 );
+
+CREATE TABLE public.fantasy_lock (
+  id          UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  is_locked   BOOLEAN NOT NULL DEFAULT FALSE,
+  phase       TEXT NOT NULL DEFAULT 'league' CHECK (phase IN ('league', 'knockout')),
+  updated_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_by  UUID REFERENCES public.users(id)
+);
+
+-- Single settings row
+INSERT INTO public.fantasy_lock (is_locked, phase) VALUES (FALSE, 'league');
 
 CREATE TABLE public.player_match_stats (
   id           UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
@@ -117,7 +128,7 @@ CREATE TABLE public.fantasy_scores (
   points_breakdown JSONB NOT NULL DEFAULT '{}',
   total_points     INTEGER NOT NULL DEFAULT 0,
   created_at       TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-  UNIQUE(fantasy_team_id, player_id)
+  UNIQUE(fantasy_team_id, player_id, match_id)
 );
 
 -- ────────────────────────────────────────────────────────────
@@ -175,6 +186,7 @@ ALTER TABLE public.predictions        ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.fantasy_teams      ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.player_match_stats ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.fantasy_scores     ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.fantasy_lock       ENABLE ROW LEVEL SECURITY;
 
 -- USERS
 CREATE POLICY "users_read_all"    ON public.users FOR SELECT USING (TRUE);
@@ -230,6 +242,11 @@ CREATE POLICY "stats_admin_insert" ON public.player_match_stats FOR INSERT
 CREATE POLICY "stats_admin_update" ON public.player_match_stats FOR UPDATE
   USING (EXISTS (SELECT 1 FROM public.users WHERE id = auth.uid() AND role = 'admin'));
 CREATE POLICY "stats_admin_delete" ON public.player_match_stats FOR DELETE
+  USING (EXISTS (SELECT 1 FROM public.users WHERE id = auth.uid() AND role = 'admin'));
+
+-- FANTASY_LOCK
+CREATE POLICY "fantasy_lock_read"         ON public.fantasy_lock FOR SELECT USING (auth.uid() IS NOT NULL);
+CREATE POLICY "fantasy_lock_admin_update" ON public.fantasy_lock FOR UPDATE
   USING (EXISTS (SELECT 1 FROM public.users WHERE id = auth.uid() AND role = 'admin'));
 
 -- FANTASY_SCORES (written by service role key — bypass RLS via service client)

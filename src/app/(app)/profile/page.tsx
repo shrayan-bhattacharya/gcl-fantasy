@@ -2,7 +2,7 @@ import { createClient } from '@/lib/supabase/server'
 import { PageWrapper, AnimatedSection } from '@/components/layout/PageWrapper'
 import { Card, CardBody } from '@/components/ui/Card'
 import { TeamLogo } from '@/components/ui/TeamLogo'
-import { ROLE_ICONS, ROLE_LABELS } from '@/constants/ipl'
+import { CompactPlayerCard } from '@/components/ui/PlayerCard'
 import { formatMatchDate } from '@/lib/utils'
 import { User, Target, Zap, Trophy } from 'lucide-react'
 
@@ -13,7 +13,7 @@ export default async function ProfilePage() {
   const [{ data: profile }, { data: predictions }, { data: fantasyTeams }] = await Promise.all([
     supabase.from('users').select('*').eq('id', user!.id).single(),
     supabase.from('predictions').select('*, matches(team_a,team_b,match_date,match_winner,status)').eq('user_id', user!.id).order('created_at', { ascending: false }).limit(20),
-    supabase.from('fantasy_teams').select('*, matches(team_a,team_b,match_date,status), batsman_1:ipl_players!batsman_1_id(name,team,role), batsman_2:ipl_players!batsman_2_id(name,team,role), bowler_1:ipl_players!bowler_1_id(name,team,role), bowler_2:ipl_players!bowler_2_id(name,team,role), flex:ipl_players!flex_player_id(name,team,role)').eq('user_id', user!.id).order('created_at', { ascending: false }).limit(10),
+    supabase.from('fantasy_teams').select('*, batsman_1:ipl_players!batsman_1_id(id,name,team,role,image_url,country,career_runs,career_wickets,strike_rate,economy_rate), batsman_2:ipl_players!batsman_2_id(id,name,team,role,image_url,country,career_runs,career_wickets,strike_rate,economy_rate), bowler_1:ipl_players!bowler_1_id(id,name,team,role,image_url,country,career_runs,career_wickets,strike_rate,economy_rate), bowler_2:ipl_players!bowler_2_id(id,name,team,role,image_url,country,career_runs,career_wickets,strike_rate,economy_rate), flex:ipl_players!flex_player_id(id,name,team,role,image_url,country,career_runs,career_wickets,strike_rate,economy_rate)').eq('user_id', user!.id).order('created_at', { ascending: false }).limit(10),
   ])
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -111,32 +111,25 @@ export default async function ProfilePage() {
           </h3>
           <div className="space-y-3">
             {fantasyTeams?.map((ft: any) => {
-              const match = ft.matches as any
               const players = [ft.batsman_1, ft.batsman_2, ft.bowler_1, ft.bowler_2, ft.flex].filter(Boolean) as any[]
               return (
                 <Card key={ft.id} className="overflow-hidden">
                   <div className="px-4 py-2.5 border-b border-white/5 flex items-center justify-between">
-                    {match && (
-                      <div className="flex items-center gap-2">
-                        <TeamLogo team={match.team_a} size="xs" />
-                        <span className="text-xs text-dark-muted">vs</span>
-                        <TeamLogo team={match.team_b} size="xs" />
-                        <span className="text-xs text-dark-muted">{formatMatchDate(match.match_date)}</span>
-                      </div>
-                    )}
+                    <span className={`px-2 py-0.5 rounded-md text-xs font-bold ${
+                      ft.phase === 'league'
+                        ? 'bg-neon-cyan/10 text-neon-cyan border border-neon-cyan/20'
+                        : 'bg-neon-gold/10 text-neon-gold border border-neon-gold/20'
+                    }`}>
+                      {ft.phase === 'league' ? 'League Stage' : 'Knockout Stage'}
+                    </span>
                     {ft.total_points > 0 && (
                       <span className="text-xs font-bold text-neon-gold">{ft.total_points} pts</span>
                     )}
                   </div>
-                  <CardBody className="py-2">
-                    <div className="flex flex-wrap gap-1.5">
-                      {players.map((p, i) => (
-                        <div key={i} className="flex items-center gap-1.5 px-2 py-1 rounded-lg bg-dark-elevated text-xs">
-                          <span>{ROLE_ICONS[p.role]}</span>
-                          <span className="text-white">{p.name}</span>
-                        </div>
-                      ))}
-                    </div>
+                  <CardBody className="py-2 px-2 space-y-1.5">
+                    {players.map((p: any, i: number) => (
+                      <CompactPlayerCard key={i} player={p} showStats />
+                    ))}
                   </CardBody>
                 </Card>
               )

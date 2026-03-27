@@ -2,7 +2,6 @@ import { NextResponse } from 'next/server'
 import { createServiceClient } from '@/lib/supabase/server'
 import { scrapeMatchScorecard } from '@/lib/espn-scraper'
 import { calculateFantasyPoints } from '@/constants/scoring'
-import { getMatchDay } from '@/lib/utils'
 
 export async function POST(request: Request) {
   try {
@@ -56,45 +55,30 @@ export async function POST(request: Request) {
 
     if (statsErr) return NextResponse.json({ error: statsErr.message }, { status: 500 })
 
-    // ── Fantasy scoring (per match_day, not per match_id) ────────────────────
+    // ── Fantasy scoring (season-long squads) ──────────────────────────────
 
-    // Get this match's IST date and all matches on that day
-    const { data: thisMatch } = await supabase
-      .from('matches')
-      .select('match_date, status')
-      .eq('id', matchId)
+    // Determine current phase
+    const { data: lockSettings } = await supabase
+      .from('fantasy_lock')
+      .select('phase')
+      .limit(1)
       .single()
 
-    if (!thisMatch) return NextResponse.json({ statsUpserted: statRows.length, fantasyTeamsScored: 0 })
+    const phase = lockSettings?.phase ?? 'league'
 
-    const matchDay = getMatchDay(thisMatch.match_date)
-    const [year, month, day] = matchDay.split('-').map(Number)
-    const dayStartUTC = new Date(Date.UTC(year, month - 1, day - 1, 18, 30))
-    const dayEndUTC   = new Date(Date.UTC(year, month - 1, day,     18, 30))
-
-    const { data: dayMatches } = await supabase
-      .from('matches')
-      .select('id, status')
-      .gte('match_date', dayStartUTC.toISOString())
-      .lt('match_date', dayEndUTC.toISOString())
-
-    const dayMatchIds = (dayMatches ?? []).map((m: any) => m.id)
-    const allMatchesCompleted = (dayMatches ?? []).every((m: any) => m.status === 'completed')
-
-    // Fantasy teams for this day
+    // Get ALL fantasy teams for the current phase
     const { data: fantasyTeams } = await supabase
       .from('fantasy_teams')
-      .select('id, user_id, batsman_1_id, batsman_2_id, bowler_1_id, bowler_2_id, flex_player_id, is_scored')
-      .eq('match_day', matchDay)
+      .select('id, user_id, batsman_1_id, batsman_2_id, bowler_1_id, bowler_2_id, flex_player_id, total_points')
+      .eq('phase', phase)
 
     let fantasyTeamsScored = 0
 
     if (fantasyTeams?.length) {
-      // All player stats across all day's matches
-      const { data: allDayStats } = await supabase
-        .from('player_match_stats')
-        .select('player_id, match_id, runs_scored, wickets')
-        .in('match_id', dayMatchIds)
+      // Index the just-upserted stats by player_id for this match
+      const statsByPlayer = new Map(
+        statRows.filter(Boolean).map((s: any) => [s.player_id, s])
+      )
 
       for (const team of fantasyTeams) {
         const playerIds = [
@@ -103,19 +87,18 @@ export async function POST(request: Request) {
           team.flex_player_id,
         ]
 
-        // Upsert one fantasy_scores row per (team, player, match)
         for (const pid of playerIds) {
-          const playerMatchStats = (allDayStats ?? []).filter((s: any) => s.player_id === pid)
-          for (const stat of playerMatchStats) {
-            const { total, breakdown } = calculateFantasyPoints(stat as any)
-            await supabase.from('fantasy_scores').upsert({
-              fantasy_team_id: team.id,
-              player_id: pid,
-              match_id: stat.match_id,
-              points_breakdown: breakdown,
-              total_points: total,
-            }, { onConflict: 'fantasy_team_id,player_id,match_id' })
-          }
+          const stat = statsByPlayer.get(pid)
+          if (!stat) continue
+
+          const { total, breakdown } = calculateFantasyPoints({ runs_scored: stat.runs_scored, wickets: stat.wickets })
+          await supabase.from('fantasy_scores').upsert({
+            fantasy_team_id: team.id,
+            player_id: pid,
+            match_id: matchId,
+            points_breakdown: breakdown,
+            total_points: total,
+          }, { onConflict: 'fantasy_team_id,player_id,match_id' })
         }
 
         // Recompute total from all stored scores for this team
@@ -125,13 +108,14 @@ export async function POST(request: Request) {
           .eq('fantasy_team_id', team.id)
 
         const newTotal = (teamScores ?? []).reduce((sum: number, s: any) => sum + s.total_points, 0)
+        const diff = newTotal - team.total_points
 
         await supabase.from('fantasy_teams')
-          .update({ total_points: newTotal, is_scored: allMatchesCompleted })
+          .update({ total_points: newTotal })
           .eq('id', team.id)
 
-        // Update user totals only once — when the full day is done
-        if (allMatchesCompleted && !team.is_scored) {
+        // Update user totals immediately
+        if (diff !== 0) {
           const { data: u } = await supabase
             .from('users')
             .select('fantasy_score, total_score')
@@ -140,12 +124,12 @@ export async function POST(request: Request) {
 
           if (u) {
             await supabase.from('users').update({
-              fantasy_score: u.fantasy_score + newTotal,
-              total_score: u.total_score + newTotal,
+              fantasy_score: u.fantasy_score + diff,
+              total_score: u.total_score + diff,
             }).eq('id', team.user_id)
           }
-          fantasyTeamsScored++
         }
+        fantasyTeamsScored++
       }
     }
 

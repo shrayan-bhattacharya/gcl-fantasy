@@ -230,7 +230,7 @@ export function GettingStarted({ totalPredictions, totalMatches, hasFantasyTeam 
                       bullets={[
                         'Pick 5 players: 2 batsmen, 2 bowlers, 1 flex',
                         '1pt per run · 10pts per wicket from your squad',
-                        'Change your squad anytime before the lock',
+                        'One squad for the entire stage — choose wisely!',
                       ]}
                       progress={squadProgress}
                       cta="Pick Your Squad"

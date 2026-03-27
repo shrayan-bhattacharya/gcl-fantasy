@@ -1,17 +1,15 @@
 'use client'
 
 import { motion, useMotionValue, useSpring, useTransform, type Variants } from 'framer-motion'
-import { useEffect, useState, useMemo } from 'react'
+import { useEffect } from 'react'
 import { PageWrapper, AnimatedSection } from '@/components/layout/PageWrapper'
 import { GettingStarted } from '@/components/ui/GettingStarted'
 import { Card, CardBody } from '@/components/ui/Card'
 import { StatusBadge } from '@/components/ui/Badge'
 import { TeamLogo } from '@/components/ui/TeamLogo'
 import { IPL_TEAMS, ROLE_COLORS, ROLE_ICONS, ROLE_LABELS } from '@/constants/ipl'
-import {
-  formatMatchDate, ordinal,
-  getMatchDay, getMatchDayLockTime, getMatchDayUnlockTime, formatCountdown,
-} from '@/lib/utils'
+import { formatMatchDate, ordinal } from '@/lib/utils'
+import { CompactPlayerCard } from '@/components/ui/PlayerCard'
 import Link from 'next/link'
 import { Trophy, Target, Zap, TrendingUp, ArrowRight, Calendar, Lock } from 'lucide-react'
 import type { Database } from '@/types/database.types'
@@ -29,6 +27,7 @@ interface Props {
   latestFantasyTeam: any
   totalPredictions: number
   totalMatches: number
+  isFantasyLocked: boolean
 }
 
 // Count-up animation component
@@ -59,28 +58,7 @@ const cardVariants: Variants = {
   visible: { opacity: 1, y: 0, transition: { type: 'spring', stiffness: 250, damping: 25 } },
 }
 
-export function DashboardClient({ profile, rank, upcomingMatches, recentPredictions, leaderboardTop, currentUserId, latestFantasyTeam, totalPredictions, totalMatches }: Props) {
-  const [now, setNow] = useState(() => new Date())
-  useEffect(() => {
-    const timer = setInterval(() => setNow(new Date()), 1000)
-    return () => clearInterval(timer)
-  }, [])
-
-  // Compute next lock info from upcoming matches
-  const nextLock = useMemo(() => {
-    if (!upcomingMatches.length) return null
-    const earliest = upcomingMatches.reduce((a, b) =>
-      new Date(a.match_date) < new Date(b.match_date) ? a : b
-    )
-    const lockTime = getMatchDayLockTime(earliest.match_date)
-    const matchDay = getMatchDay(earliest.match_date)
-    const unlockTime = getMatchDayUnlockTime(matchDay)
-    const msUntilLock = lockTime.getTime() - now.getTime()
-    const isLocked = now >= lockTime && now < unlockTime
-    if (isLocked) return { state: 'locked' as const, ms: Math.max(0, unlockTime.getTime() - now.getTime()) }
-    if (msUntilLock > 0 && msUntilLock < 48 * 60 * 60 * 1000) return { state: 'pending' as const, ms: msUntilLock }
-    return null
-  }, [upcomingMatches, now])
+export function DashboardClient({ profile, rank, upcomingMatches, recentPredictions, leaderboardTop, currentUserId, latestFantasyTeam, totalPredictions, totalMatches, isFantasyLocked }: Props) {
 
   const stats = [
     {
@@ -130,24 +108,23 @@ export function DashboardClient({ profile, rank, upcomingMatches, recentPredicti
             <p className="text-dark-muted text-sm mt-1">
               You&apos;re ranked <span className="text-neon-gold font-bold">{ordinal(rank)}</span> on the leaderboard
             </p>
-            {nextLock && (
+            {isFantasyLocked ? (
               <motion.div
                 initial={{ opacity: 0, y: 4 }}
                 animate={{ opacity: 1, y: 0 }}
                 className="inline-flex items-center gap-1.5 mt-2 px-2.5 py-1 rounded-lg bg-neon-orange/8 border border-neon-orange/20 text-xs"
               >
                 <Lock className="w-3 h-3 text-neon-orange" />
-                {nextLock.state === 'locked' ? (
-                  <span className="text-dark-muted">
-                    Locked · unlocks in{' '}
-                    <span className="text-neon-orange font-semibold">{formatCountdown(nextLock.ms)}</span>
-                  </span>
-                ) : (
-                  <span className="text-dark-muted">
-                    Next lock in{' '}
-                    <span className="text-neon-orange font-semibold">{formatCountdown(nextLock.ms)}</span>
-                  </span>
-                )}
+                <span className="text-neon-orange font-semibold">Squads Locked</span>
+              </motion.div>
+            ) : (
+              <motion.div
+                initial={{ opacity: 0, y: 4 }}
+                animate={{ opacity: 1, y: 0 }}
+                className="inline-flex items-center gap-1.5 mt-2 px-2.5 py-1 rounded-lg bg-neon-green/8 border border-neon-green/20 text-xs"
+              >
+                <Zap className="w-3 h-3 text-neon-green" />
+                <span className="text-neon-green font-semibold">Squads Open</span>
               </motion.div>
             )}
           </div>
@@ -349,7 +326,7 @@ export function DashboardClient({ profile, rank, upcomingMatches, recentPredicti
               </Link>
             </div>
             <Card>
-              <CardBody className="space-y-2">
+              <CardBody className="space-y-2 p-3">
                 {[
                   latestFantasyTeam.batsman_1,
                   latestFantasyTeam.batsman_2,
@@ -357,13 +334,7 @@ export function DashboardClient({ profile, rank, upcomingMatches, recentPredicti
                   latestFantasyTeam.bowler_2,
                   latestFantasyTeam.flex,
                 ].filter(Boolean).map((player: any, i: number) => (
-                  <div key={i} className="flex items-center gap-2.5">
-                    <span className="text-sm">{ROLE_ICONS[player.role]}</span>
-                    <span className="text-sm text-white flex-1">{player.name}</span>
-                    <span className="text-xs font-medium px-1.5 py-0.5 rounded-md" style={{ color: ROLE_COLORS[player.role], backgroundColor: ROLE_COLORS[player.role] + '15' }}>
-                      {ROLE_LABELS[player.role]}
-                    </span>
-                  </div>
+                  <CompactPlayerCard key={i} player={player} showStats />
                 ))}
               </CardBody>
             </Card>

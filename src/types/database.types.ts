@@ -127,6 +127,11 @@ export interface Database {
           image_url: string | null
           is_active: boolean
           created_at: string
+          country: string | null
+          career_runs: number | null
+          career_wickets: number | null
+          strike_rate: number | null
+          economy_rate: number | null
         }
         Insert: {
           id?: string
@@ -136,6 +141,11 @@ export interface Database {
           image_url?: string | null
           is_active?: boolean
           created_at?: string
+          country?: string | null
+          career_runs?: number | null
+          career_wickets?: number | null
+          strike_rate?: number | null
+          economy_rate?: number | null
         }
         Update: {
           id?: string
@@ -145,6 +155,11 @@ export interface Database {
           image_url?: string | null
           is_active?: boolean
           created_at?: string
+          country?: string | null
+          career_runs?: number | null
+          career_wickets?: number | null
+          strike_rate?: number | null
+          economy_rate?: number | null
         }
       }
       predictions: {
@@ -183,8 +198,7 @@ export interface Database {
         Row: {
           id: string
           user_id: string
-          match_id: string | null  // nullable — kept for legacy rows only
-          match_day: string        // YYYY-MM-DD in IST, unique per (user, day)
+          phase: 'league' | 'knockout'
           batsman_1_id: string
           batsman_2_id: string
           bowler_1_id: string
@@ -197,8 +211,7 @@ export interface Database {
         Insert: {
           id?: string
           user_id: string
-          match_id?: string | null
-          match_day: string
+          phase?: 'league' | 'knockout'
           batsman_1_id: string
           batsman_2_id: string
           bowler_1_id: string
@@ -211,8 +224,7 @@ export interface Database {
         Update: {
           id?: string
           user_id?: string
-          match_id?: string | null
-          match_day?: string
+          phase?: 'league' | 'knockout'
           batsman_1_id?: string
           batsman_2_id?: string
           bowler_1_id?: string
@@ -221,6 +233,29 @@ export interface Database {
           total_points?: number
           is_scored?: boolean
           created_at?: string
+        }
+      }
+      fantasy_lock: {
+        Row: {
+          id: string
+          is_locked: boolean
+          phase: 'league' | 'knockout'
+          updated_at: string
+          updated_by: string | null
+        }
+        Insert: {
+          id?: string
+          is_locked?: boolean
+          phase?: 'league' | 'knockout'
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Update: {
+          id?: string
+          is_locked?: boolean
+          phase?: 'league' | 'knockout'
+          updated_at?: string
+          updated_by?: string | null
         }
       }
       player_match_stats: {
