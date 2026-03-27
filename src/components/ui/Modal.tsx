@@ -38,7 +38,7 @@ export function Modal({ open, onClose, title, children, size = 'md', className }
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            className="absolute inset-0 bg-black/70 backdrop-blur-sm"
+            className="absolute inset-0 bg-dark-base"
             onClick={onClose}
           />
           <motion.div
@@ -59,7 +59,7 @@ export function Modal({ open, onClose, title, children, size = 'md', className }
                 </h2>
                 <button
                   onClick={onClose}
-                  className="p-1.5 rounded-lg text-dark-muted hover:text-white hover:bg-white/5 transition-colors"
+                  className="p-1.5 rounded-lg text-dark-muted hover:text-white hover:bg-dark-elevated transition-colors"
                 >
                   <X className="w-4 h-4" />
                 </button>

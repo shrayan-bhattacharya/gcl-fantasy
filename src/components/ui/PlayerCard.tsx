@@ -128,11 +128,11 @@ function PlayerStats({
   return (
     <div className="flex items-center justify-between gap-1 pt-2 mt-2 border-t border-white/5">
       <StatCell label="Runs" value={player.career_runs} relevant={isStatRelevant('runs', player.role)} visible={visible} color={color} />
-      <div className="w-px h-4 bg-white/6 shrink-0" />
+      <div className="w-px h-4 bg-dark-elevated shrink-0" />
       <StatCell label="Wkts" value={player.career_wickets} relevant={isStatRelevant('wickets', player.role)} visible={visible} color={color} />
-      <div className="w-px h-4 bg-white/6 shrink-0" />
+      <div className="w-px h-4 bg-dark-elevated shrink-0" />
       <StatCell label="SR" value={player.strike_rate} decimals={1} relevant={isStatRelevant('sr', player.role)} visible={visible} color={color} />
-      <div className="w-px h-4 bg-white/6 shrink-0" />
+      <div className="w-px h-4 bg-dark-elevated shrink-0" />
       <StatCell label="Eco" value={player.economy_rate} decimals={2} relevant={isStatRelevant('eco', player.role)} visible={visible} color={color} />
     </div>
   )

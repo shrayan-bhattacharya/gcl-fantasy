@@ -35,7 +35,7 @@ export function TopBar({ displayName, email, totalScore = 0, rank }: TopBarProps
   return (
     <header
       className="sticky top-0 z-30 h-14 flex items-center justify-between px-4 lg:px-6 border-b border-dark-border/60"
-      style={{ background: 'var(--theme-surface)', backdropFilter: 'blur(20px)', WebkitBackdropFilter: 'blur(20px)' }}
+      style={{ background: 'var(--theme-surface)' }}
     >
       {/* Left: branding */}
       <div className="flex items-center gap-3 min-w-0">
@@ -73,7 +73,7 @@ export function TopBar({ displayName, email, totalScore = 0, rank }: TopBarProps
           whileHover={{ scale: 1.1 }}
           whileTap={{ scale: 0.9 }}
           onClick={toggle}
-          className="relative p-2 rounded-lg hover:bg-white/5 transition-colors"
+          className="relative p-2 rounded-lg hover:bg-dark-elevated transition-colors"
           title={theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}
         >
           <AnimatePresence mode="wait">
@@ -106,7 +106,7 @@ export function TopBar({ displayName, email, totalScore = 0, rank }: TopBarProps
           whileHover={{ scale: 1.1 }}
           whileTap={{ scale: 0.9 }}
           onClick={handleShowGuide}
-          className="p-2 rounded-lg hover:bg-white/5 transition-colors"
+          className="p-2 rounded-lg hover:bg-dark-elevated transition-colors"
           title="How to play"
         >
           <HelpCircle className="w-4 h-4 text-dark-muted" />
@@ -116,7 +116,7 @@ export function TopBar({ displayName, email, totalScore = 0, rank }: TopBarProps
         <motion.button
           whileHover={{ scale: 1.1 }}
           whileTap={{ scale: 0.9 }}
-          className="relative p-2 rounded-lg hover:bg-white/5 transition-colors"
+          className="relative p-2 rounded-lg hover:bg-dark-elevated transition-colors"
         >
           <motion.div
             animate={hasNotif ? { y: [0, -2, 0, -2, 0] } : {}}
@@ -135,7 +135,7 @@ export function TopBar({ displayName, email, totalScore = 0, rank }: TopBarProps
             whileHover={{ scale: 1.05 }}
             whileTap={{ scale: 0.95 }}
             onClick={() => setShowDropdown(!showDropdown)}
-            className="flex items-center gap-2 p-1 pr-2 rounded-xl hover:bg-white/5 transition-colors"
+            className="flex items-center gap-2 p-1 pr-2 rounded-xl hover:bg-dark-elevated transition-colors"
           >
             <div className="relative">
               <div className="w-7 h-7 rounded-full bg-neon-blue/20 border border-neon-blue/40 flex items-center justify-center text-xs font-bold text-neon-blue">
@@ -167,7 +167,7 @@ export function TopBar({ displayName, email, totalScore = 0, rank }: TopBarProps
                   <p className="text-xs text-dark-muted truncate">{email}</p>
                 </div>
                 <div className="p-1">
-                  <a href="/profile" className="flex items-center gap-2 px-3 py-2 text-sm text-white hover:bg-white/5 rounded-lg transition-colors">
+                  <a href="/profile" className="flex items-center gap-2 px-3 py-2 text-sm text-white hover:bg-dark-elevated rounded-lg transition-colors">
                     Profile
                   </a>
                 </div>

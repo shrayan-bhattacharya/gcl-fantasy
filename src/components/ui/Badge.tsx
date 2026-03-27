@@ -14,7 +14,7 @@ const variants = {
   gold:   'bg-neon-gold/10 text-neon-gold border border-neon-gold/20',
   cyan:   'bg-neon-cyan/10 text-neon-cyan border border-neon-cyan/20',
   purple: 'bg-neon-purple/10 text-neon-purple border border-neon-purple/20',
-  muted:  'bg-white/5 text-dark-muted border border-white/10',
+  muted:  'bg-dark-elevated text-dark-muted border border-dark-border',
   red:    'bg-red-500/10 text-red-400 border border-red-500/20',
 }
 

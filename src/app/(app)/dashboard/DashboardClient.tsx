@@ -189,7 +189,7 @@ export function DashboardClient({ profile, rank, upcomingMatches, recentPredicti
                 transition={{ delay: 0.3 + i * 0.08, type: 'spring', stiffness: 250, damping: 25 }}
               >
                 <Link href={`/matches/${match.id}`}>
-                  <div className="glass rounded-xl p-4 border border-dark-border hover:border-neon-blue/30 hover:bg-neon-blue/[0.02] hover:-translate-y-0.5 transition-all duration-200 group relative overflow-hidden">
+                  <div className="glass rounded-xl p-4 border border-dark-border hover:border-neon-blue/30 hover:bg-dark-elevated hover:-translate-y-0.5 transition-all duration-200 group relative overflow-hidden">
                     {/* Team color stripe */}
                     <div className="absolute left-0 top-0 bottom-0 w-0.5 rounded-l-xl" style={{ backgroundColor: IPL_TEAMS[match.team_a]?.color ?? '#0066CC' }} />
                     <div className="flex items-center justify-between gap-3 pl-2">

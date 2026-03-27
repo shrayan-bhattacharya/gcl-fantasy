@@ -189,12 +189,12 @@ export default function AdminResults() {
             <div key={match.id} className="glass rounded-xl border border-dark-border overflow-hidden">
               {/* Header */}
               <div
-                className="flex items-center gap-3 px-4 py-4 cursor-pointer hover:bg-white/[0.02] transition-colors"
+                className="flex items-center gap-3 px-4 py-4 cursor-pointer hover:bg-dark-elevated transition-colors"
                 onClick={() => setExpanded(isOpen ? null : match.id)}
               >
                 <div className="flex items-center gap-2 flex-1 min-w-0">
                   <span className={`text-xs px-2 py-0.5 rounded-md font-medium shrink-0
-                    ${match.status === 'completed' ? 'bg-white/5 text-dark-muted' : match.status === 'live' ? 'bg-neon-green/10 text-neon-green' : 'bg-neon-cyan/10 text-neon-cyan'}`}>
+                    ${match.status === 'completed' ? 'bg-dark-elevated text-dark-muted' : match.status === 'live' ? 'bg-neon-green/10 text-neon-green' : 'bg-neon-cyan/10 text-neon-cyan'}`}>
                     {match.status}
                   </span>
                   <TeamLogo team={match.team_a} size="xs" />
@@ -272,7 +272,7 @@ export default function AdminResults() {
                           </thead>
                           <tbody className="divide-y divide-white/[0.04]">
                             {teamPlayers.map(player => (
-                              <tr key={player.id} className="hover:bg-white/[0.02]">
+                              <tr key={player.id} className="hover:bg-dark-elevated">
                                 <td className="py-2 pr-3">
                                   <div className="flex items-center gap-1.5">
                                     <span>{ROLE_ICONS[player.role]}</span>

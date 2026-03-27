@@ -135,7 +135,7 @@ export default function AdminMatches() {
         {matches.map(m => (
           <div key={m.id} className="glass rounded-xl border border-dark-border px-4 py-3 flex items-center justify-between gap-3">
             <div className="flex items-center gap-3 min-w-0">
-              <span className={`text-xs px-2 py-0.5 rounded-md font-medium ${m.status === 'live' ? 'bg-neon-green/10 text-neon-green' : m.status === 'upcoming' ? 'bg-neon-cyan/10 text-neon-cyan' : 'bg-white/5 text-dark-muted'}`}>
+              <span className={`text-xs px-2 py-0.5 rounded-md font-medium ${m.status === 'live' ? 'bg-neon-green/10 text-neon-green' : m.status === 'upcoming' ? 'bg-neon-cyan/10 text-neon-cyan' : 'bg-dark-elevated text-dark-muted'}`}>
                 {m.status}
               </span>
               <p className="text-sm font-semibold text-white">{m.team_a} vs {m.team_b}</p>

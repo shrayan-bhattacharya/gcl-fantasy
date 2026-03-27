@@ -68,7 +68,7 @@ export function Sidebar({ userRole, displayName }: SidebarProps) {
                 'flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all duration-200 group relative',
                 active
                   ? 'bg-neon-blue/10 text-neon-blue border border-neon-blue/20'
-                  : 'text-dark-muted hover:text-white hover:bg-white/5 border border-transparent'
+                  : 'text-dark-muted hover:text-white hover:bg-dark-elevated border border-transparent'
               )}
             >
               {active && (
@@ -102,7 +102,7 @@ export function Sidebar({ userRole, displayName }: SidebarProps) {
               'flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all duration-200 border',
               pathname.startsWith('/admin')
                 ? 'bg-neon-orange/10 text-neon-orange border-neon-orange/20'
-                : 'text-dark-muted hover:text-white hover:bg-white/5 border-transparent'
+                : 'text-dark-muted hover:text-white hover:bg-dark-elevated border-transparent'
             )}
           >
             <ShieldCheck className="w-4 h-4 shrink-0" />
@@ -164,7 +164,7 @@ export function Sidebar({ userRole, displayName }: SidebarProps) {
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
-              className="lg:hidden fixed inset-0 z-40 bg-black/60"
+              className="lg:hidden fixed inset-0 z-40 bg-dark-base"
               onClick={() => setMobileOpen(false)}
             />
             <motion.aside

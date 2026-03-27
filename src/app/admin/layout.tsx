@@ -38,13 +38,13 @@ export default async function AdminLayout({ children }: { children: React.ReactN
         <nav className="flex-1 px-2 space-y-1">
           {ADMIN_NAV.map(item => (
             <Link key={item.href} href={item.href}
-              className="flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-sm font-medium text-dark-muted hover:text-white hover:bg-white/5 transition-all">
+              className="flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-sm font-medium text-dark-muted hover:text-white hover:bg-dark-elevated transition-all">
               <item.icon className="w-4 h-4 shrink-0" />
               {item.label}
             </Link>
           ))}
           <Link href="/dashboard"
-            className="flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-sm font-medium text-dark-muted hover:text-white hover:bg-white/5 transition-all mt-4">
+            className="flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-sm font-medium text-dark-muted hover:text-white hover:bg-dark-elevated transition-all mt-4">
             ← Back to App
           </Link>
         </nav>

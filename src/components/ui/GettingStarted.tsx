@@ -187,7 +187,7 @@ export function GettingStarted({ totalPredictions, totalMatches, hasFantasyTeam 
               </motion.div>
               <button
                 onClick={e => { e.stopPropagation(); dismiss() }}
-                className="ml-1 p-1 rounded-lg hover:bg-white/10 transition-colors text-dark-muted hover:text-white"
+                className="ml-1 p-1 rounded-lg hover:bg-dark-elevated transition-colors text-dark-muted hover:text-white"
                 title="Dismiss"
               >
                 <X className="w-3.5 h-3.5" />

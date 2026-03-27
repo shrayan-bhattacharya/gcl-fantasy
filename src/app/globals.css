@@ -26,8 +26,8 @@
 /* ─── Theme CSS custom properties ─────────────────────────────────── */
 :root {
   --theme-bg: #080b14;
-  --theme-surface: rgba(13, 17, 23, 0.7);
-  --theme-surface-elevated: rgba(19, 27, 46, 0.85);
+  --theme-surface: #0d1117;
+  --theme-surface-elevated: #131b2e;
   --theme-border: rgba(30, 45, 71, 0.8);
   --theme-border-subtle: rgba(255, 255, 255, 0.05);
   --theme-text: #e8edf5;
@@ -123,19 +123,15 @@ body {
 
 ::selection { background: var(--theme-selection); color: #ffffff; }
 
-/* ─── Glass morphism ─────────────────────────────────────────────── */
+/* ─── Surface utilities ──────────────────────────────────────────── */
 .glass {
   background: var(--theme-surface);
-  backdrop-filter: blur(20px);
-  -webkit-backdrop-filter: blur(20px);
   border: 1px solid var(--theme-border);
   transition: background 200ms ease, border-color 200ms ease;
 }
 
 .glass-elevated {
   background: var(--theme-surface-elevated);
-  backdrop-filter: blur(20px);
-  -webkit-backdrop-filter: blur(20px);
   border: 1px solid rgba(0, 102, 204, 0.15);
   transition: background 200ms ease;
 }

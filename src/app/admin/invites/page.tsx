@@ -136,7 +136,7 @@ export default function AdminInvites() {
                   <span className="px-2 py-0.5 rounded-lg bg-neon-orange/10 text-neon-orange border border-neon-orange/20 font-medium">Admin</span>
                 ) : (
                   <button onClick={() => promoteToAdmin(u.id)}
-                    className="px-2 py-0.5 rounded-lg bg-white/5 text-dark-muted border border-dark-border hover:text-neon-orange hover:border-neon-orange/30 transition-colors font-medium"
+                    className="px-2 py-0.5 rounded-lg bg-dark-elevated text-dark-muted border border-dark-border hover:text-neon-orange hover:border-neon-orange/30 transition-colors font-medium"
                   >
                     Make Admin
                   </button>

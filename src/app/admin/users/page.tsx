@@ -248,7 +248,7 @@ export default function AdminUsers() {
       {/* Add User Modal */}
       {showAdd && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-          <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={() => setShowAdd(false)} />
+          <div className="absolute inset-0 bg-dark-base" onClick={() => setShowAdd(false)} />
           <div className="relative glass rounded-2xl border border-neon-blue/20 p-6 w-full max-w-sm"
             style={{ boxShadow: '0 0 60px rgba(0,102,204,0.12)' }}>
             <div className="flex items-center justify-between mb-5">
@@ -335,7 +335,7 @@ export default function AdminUsers() {
       {/* Delete Confirmation Modal */}
       {confirmDelete && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-          <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={() => setConfirmDelete(null)} />
+          <div className="absolute inset-0 bg-dark-base" onClick={() => setConfirmDelete(null)} />
           <div className="relative glass rounded-2xl border border-red-500/20 p-6 w-full max-w-sm"
             style={{ boxShadow: '0 0 40px rgba(239,68,68,0.1)' }}>
             <div className="flex items-center gap-3 mb-4">
