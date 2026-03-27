@@ -126,7 +126,9 @@ function PlayerStats({
 }) {
   const color = ROLE_COLORS[player.role]
   return (
-    <div className="flex items-center justify-between gap-1 pt-2 mt-2 border-t border-white/5">
+    <div className="pt-2 mt-2 border-t border-white/5">
+      <span className="text-[9px] text-dark-muted/50 uppercase tracking-widest font-medium leading-none block mb-1.5">IPL Career</span>
+      <div className="flex items-center justify-between gap-1">
       <StatCell label="Runs" value={player.career_runs} relevant={isStatRelevant('runs', player.role)} visible={visible} color={color} />
       <div className="w-px h-4 bg-dark-elevated shrink-0" />
       <StatCell label="Wkts" value={player.career_wickets} relevant={isStatRelevant('wickets', player.role)} visible={visible} color={color} />
@@ -134,6 +136,7 @@ function PlayerStats({
       <StatCell label="SR" value={player.strike_rate} decimals={1} relevant={isStatRelevant('sr', player.role)} visible={visible} color={color} />
       <div className="w-px h-4 bg-dark-elevated shrink-0" />
       <StatCell label="Eco" value={player.economy_rate} decimals={2} relevant={isStatRelevant('eco', player.role)} visible={visible} color={color} />
+      </div>
     </div>
   )
 }
