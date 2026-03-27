@@ -42,7 +42,7 @@ export function Sidebar({ userRole, displayName }: SidebarProps) {
 
       {/* Logo */}
       <div className="px-5 mb-8">
-        <div className="flex items-center gap-2.5">
+        <Link href="/dashboard" className="flex items-center gap-2.5 hover:opacity-80 transition-opacity">
           <div className="w-8 h-8 rounded-lg bg-neon-blue/10 border border-neon-blue/30 flex items-center justify-center">
             <span className="text-base">🏏</span>
           </div>
@@ -52,7 +52,7 @@ export function Sidebar({ userRole, displayName }: SidebarProps) {
             </p>
             <p className="text-[10px] text-dark-muted">by GreyChain AI · 2026</p>
           </div>
-        </div>
+        </Link>
       </div>
 
       {/* Nav */}
