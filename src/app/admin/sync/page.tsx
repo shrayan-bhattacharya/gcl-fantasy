@@ -87,7 +87,7 @@ export default function SyncPage() {
     const { data } = await supabase
       .from('matches')
       .select('id, team_a, team_b, match_date, cricapi_match_id, status')
-      .eq('status', 'completed')
+      .not('cricapi_match_id', 'is', null)
       .order('match_date', { ascending: false })
     setMatches(data ?? [])
     setMatchesLoaded(true)
@@ -205,7 +205,7 @@ export default function SyncPage() {
           {/* Match picker from DB */}
           <div>
             <div className="flex items-center gap-2 mb-1.5">
-              <label className="text-xs text-dark-muted font-medium">Select completed match</label>
+              <label className="text-xs text-dark-muted font-medium">Select match</label>
               {!matchesLoaded && (
                 <button onClick={loadMatches} className="text-xs text-neon-green underline">Load matches</button>
               )}
@@ -223,8 +223,7 @@ export default function SyncPage() {
                 <option value="">— pick a match —</option>
                 {matches.map(m => (
                   <option key={m.id} value={m.id}>
-                    {m.team_a} vs {m.team_b} · {new Date(m.match_date).toLocaleDateString()}
-                    {m.cricapi_match_id ? ` (CricAPI: ${m.cricapi_match_id.slice(0, 8)}…)` : ' (no CricAPI ID)'}
+                    {m.team_a} vs {m.team_b} · {new Date(m.match_date).toLocaleDateString()} [{m.status}]
                   </option>
                 ))}
               </select>
