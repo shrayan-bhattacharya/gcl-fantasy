@@ -30,8 +30,8 @@ interface Props {
 }
 
 const SLOT_LABELS = [
-  { key: 'batsman_1', label: 'Batsman 1', role: 'batsman' },
-  { key: 'batsman_2', label: 'Batsman 2', role: 'batsman' },
+  { key: 'batsman_1', label: 'Batsman 1 (or WK)', role: 'batsman' },
+  { key: 'batsman_2', label: 'Batsman 2 (or WK)', role: 'batsman' },
   { key: 'bowler_1', label: 'Bowler 1', role: 'bowler' },
   { key: 'bowler_2', label: 'Bowler 2', role: 'bowler' },
   { key: 'flex', label: 'All-Rounder / WK', role: 'flex' },
@@ -81,10 +81,13 @@ export function FantasyClient({ players, existingTeam, isLocked, phase, userId }
     if (filterTeam !== 'all' && p.team !== filterTeam) return false
 
     if (activeSlot === 'flex') {
-      return p.role === 'allrounder' || p.role === 'wicketkeeper'
+      return true
     }
-    if (slotRoleFilter && slotRoleFilter !== 'flex') {
-      return p.role === slotRoleFilter
+    if (slotRoleFilter === 'batsman') {
+      return p.role === 'batsman' || p.role === 'wicketkeeper'
+    }
+    if (slotRoleFilter === 'bowler') {
+      return p.role === 'bowler'
     }
     return true
   })
@@ -301,9 +304,11 @@ export function FantasyClient({ players, existingTeam, isLocked, phase, userId }
             >
               <div className="w-2 h-2 rounded-full bg-neon-blue animate-ping" />
               Selecting: <strong>{SLOT_LABELS.find(s => s.key === activeSlot)?.label}</strong>
-              {activeSlot !== 'flex'
-                ? ` — pick a ${ROLE_LABELS[SLOT_LABELS.find(s => s.key === activeSlot)?.role ?? '']}`
-                : ' — pick an All-Rounder or Wicketkeeper'
+              {activeSlot === 'batsman_1' || activeSlot === 'batsman_2'
+                ? ' — pick a Batsman or Wicketkeeper'
+                : activeSlot === 'bowler_1' || activeSlot === 'bowler_2'
+                  ? ' — pick a Bowler'
+                  : ' — pick any player'
               }
             </motion.div>
           )}
