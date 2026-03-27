@@ -1,6 +1,6 @@
 'use client'
 
-import { motion, AnimatePresence } from 'framer-motion'
+import { motion } from 'framer-motion'
 import { useState, useTransition, useEffect, useMemo, useCallback, memo } from 'react'
 import { PageWrapper, AnimatedSection } from '@/components/layout/PageWrapper'
 import { StatusBadge } from '@/components/ui/Badge'
@@ -11,7 +11,7 @@ import {
   getMatchDay, getMatchDayLockTime, getMatchDayUnlockTime, formatCountdown,
 } from '@/lib/utils'
 import { createClient } from '@/lib/supabase/client'
-import { Calendar, CheckCircle, Lock, Target, ChevronDown, ChevronUp } from 'lucide-react'
+import { Calendar, CheckCircle, Lock, Target } from 'lucide-react'
 import type { Database } from '@/types/database.types'
 import { PREDICTION_POINTS } from '@/constants/scoring'
 
@@ -44,16 +44,14 @@ interface MatchCardProps {
   existing: PredictionRow | undefined
   confirmedWinner: IPLTeam | undefined
   pickedWinner: IPLTeam | null
-  isExpanded: boolean
   isSaving: boolean
-  onToggleExpand: (id: string) => void
   onSetPick: (matchId: string, team: IPLTeam) => void
   onSubmitPrediction: (matchId: string, winner: IPLTeam) => void
 }
 
 const MatchCard = memo(function MatchCard({
-  match, dayIsLocked, existing, confirmedWinner, pickedWinner, isExpanded, isSaving,
-  onToggleExpand, onSetPick, onSubmitPrediction,
+  match, dayIsLocked, existing, confirmedWinner, pickedWinner, isSaving,
+  onSetPick, onSubmitPrediction,
 }: MatchCardProps) {
   const isLocked = dayIsLocked || match.status === 'completed'
   const hasSaved = !!confirmedWinner
@@ -66,7 +64,6 @@ const MatchCard = memo(function MatchCard({
       transition={{ type: 'spring', stiffness: 250, damping: 25 }}
       className={`glass rounded-xl border transition-all duration-200 overflow-hidden relative
         ${match.status === 'live' ? 'border-neon-green/40' : 'border-dark-border'}
-        ${isExpanded ? 'border-neon-blue/30' : ''}
       `}
       style={match.status === 'live' ? { boxShadow: '0 0 24px rgba(57,255,20,0.12)' } : {}}
       whileHover={{ y: match.status === 'completed' ? 0 : -2 }}
@@ -74,10 +71,8 @@ const MatchCard = memo(function MatchCard({
       <div className="absolute left-0 top-0 bottom-0 w-0.5"
         style={{ backgroundColor: IPL_TEAMS[match.team_a]?.color ?? '#0066CC' }} />
 
-      <div
-        className="px-4 py-4 cursor-pointer select-none"
-        onClick={() => !isLocked && onToggleExpand(match.id)}
-      >
+      {/* Match header */}
+      <div className="px-4 py-4">
         <div className="flex items-center gap-3">
           <div className="flex items-center gap-2 flex-1 min-w-0">
             <TeamLogo team={match.team_a} size="sm" />
@@ -100,24 +95,15 @@ const MatchCard = memo(function MatchCard({
                 <CheckCircle className="w-2.5 h-2.5" /> {confirmedWinner} picked
               </span>
             )}
-            {isLocked && hasSaved && match.status !== 'completed' && (
-              <span className="flex items-center gap-1 text-[10px] text-dark-muted">
-                <Lock className="w-2.5 h-2.5" /> Locked · {confirmedWinner}
-              </span>
-            )}
             {match.status === 'completed' && existing && (
               <span className={`text-[10px] font-bold ${existing.points_earned > 0 ? 'text-neon-green' : 'text-dark-muted'}`}>
                 {existing.points_earned > 0 ? `+${existing.points_earned}pts` : '0pts'}
               </span>
             )}
-            {!isLocked && (
-              isExpanded
-                ? <ChevronUp className="w-4 h-4 text-dark-muted" />
-                : <ChevronDown className="w-4 h-4 text-dark-muted" />
-            )}
           </div>
         </div>
 
+        {/* Completed result — always visible */}
         {match.status === 'completed' && match.match_winner && (
           <div className="mt-3 pt-3 border-t border-white/5 flex items-center justify-between">
             <span className="text-xs text-dark-muted">Result:</span>
@@ -134,79 +120,82 @@ const MatchCard = memo(function MatchCard({
         )}
       </div>
 
-      <AnimatePresence>
-        {isExpanded && !isLocked && (
-          <motion.div
-            initial={{ height: 0, opacity: 0 }}
-            animate={{ height: 'auto', opacity: 1 }}
-            exit={{ height: 0, opacity: 0 }}
-            transition={{ type: 'spring', stiffness: 350, damping: 35 }}
-            className="overflow-hidden"
-          >
-            <div className="px-4 pb-4 pt-1 border-t border-white/5">
-              <div className="space-y-3">
-                <p className="text-xs font-medium text-dark-muted flex items-center gap-1.5">
-                  <Target className="w-3 h-3" /> Pick the match winner
-                  <span className="text-neon-green">+{PREDICTION_POINTS.MATCH_WINNER}pts</span>
-                </p>
-
-                {hasSaved && !pickedWinner && (
-                  <div className="flex items-center gap-2 px-3 py-2 rounded-xl bg-neon-blue/10 border border-neon-blue/20 text-neon-blue text-sm">
-                    <CheckCircle className="w-4 h-4 shrink-0" />
-                    <span className="font-medium">You picked <strong>{confirmedWinner}</strong></span>
-                    <button
-                      onClick={() => onSetPick(match.id, confirmedWinner!)}
-                      className="ml-auto text-xs underline text-dark-muted hover:text-white"
-                    >
-                      Change
-                    </button>
-                  </div>
-                )}
-
-                {(!hasSaved || pickedWinner) && (
-                  <div className="grid grid-cols-2 gap-2">
-                    {([match.team_a, match.team_b] as IPLTeam[]).map(team => {
-                      const isSelected = pickedWinner === team || (!pickedWinner && confirmedWinner === team)
-                      return (
-                        <motion.button
-                          key={team}
-                          whileHover={{ scale: 1.03 }}
-                          whileTap={{ scale: 0.97 }}
-                          onClick={() => onSetPick(match.id, team)}
-                          className={`flex items-center gap-2 p-3 rounded-xl border text-sm font-medium transition-all duration-200
-                            ${isSelected
-                              ? 'border-neon-blue/50 bg-neon-blue/10 text-neon-blue'
-                              : 'border-dark-border bg-dark-elevated text-white hover:border-dark-muted'
-                            }`}
-                        >
-                          <TeamLogo team={team} size="xs" />
-                          {IPL_TEAMS[team].name}
-                          {isSelected && <CheckCircle className="w-3.5 h-3.5 ml-auto" />}
-                        </motion.button>
-                      )
-                    })}
-                  </div>
-                )}
-
-                {pickedWinner && (
-                  <motion.button
-                    initial={{ opacity: 0, y: 6 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    disabled={isSaving}
-                    whileHover={{ scale: 1.02 }}
-                    whileTap={{ scale: 0.98 }}
-                    onClick={() => onSubmitPrediction(match.id, pickedWinner)}
-                    className="w-full py-3 rounded-xl text-sm font-bold bg-neon-blue text-white flex items-center justify-center gap-2 disabled:opacity-60"
-                    style={{ boxShadow: '0 0 20px rgba(0,102,204,0.4)' }}
-                  >
-                    {isSaving ? 'Saving...' : hasSaved ? `Update to ${pickedWinner}` : `Lock in ${pickedWinner}`}
-                  </motion.button>
-                )}
-              </div>
+      {/* Prediction section — always visible for upcoming matches */}
+      {match.status !== 'completed' && (
+        <div className="px-4 pb-4 pt-1 border-t border-white/5">
+          {isLocked ? (
+            /* Locked state — always visible */
+            <div className="flex items-center gap-2 px-3 py-2 rounded-xl bg-neon-orange/5 border border-neon-orange/20 text-xs text-dark-muted">
+              <Lock className="w-3 h-3 text-neon-orange shrink-0" />
+              {hasSaved
+                ? <span>Locked in · You picked <strong className="text-white">{confirmedWinner}</strong></span>
+                : <span>Predictions locked for this match</span>
+              }
             </div>
-          </motion.div>
-        )}
-      </AnimatePresence>
+          ) : (
+            /* Prediction picker — always visible */
+            <div className="space-y-3">
+              <p className="text-xs font-medium text-dark-muted flex items-center gap-1.5">
+                <Target className="w-3 h-3" /> Pick the match winner
+                <span className="text-neon-green">+{PREDICTION_POINTS.MATCH_WINNER}pts</span>
+              </p>
+
+              {hasSaved && !pickedWinner && (
+                <div className="flex items-center gap-2 px-3 py-2 rounded-xl bg-neon-blue/10 border border-neon-blue/20 text-neon-blue text-sm">
+                  <CheckCircle className="w-4 h-4 shrink-0" />
+                  <span className="font-medium">You picked <strong>{confirmedWinner}</strong></span>
+                  <button
+                    onClick={() => onSetPick(match.id, confirmedWinner!)}
+                    className="ml-auto text-xs underline text-dark-muted hover:text-white"
+                  >
+                    Change
+                  </button>
+                </div>
+              )}
+
+              {(!hasSaved || pickedWinner) && (
+                <div className="grid grid-cols-2 gap-2">
+                  {([match.team_a, match.team_b] as IPLTeam[]).map(team => {
+                    const isSelected = pickedWinner === team || (!pickedWinner && confirmedWinner === team)
+                    return (
+                      <motion.button
+                        key={team}
+                        whileHover={{ scale: 1.03 }}
+                        whileTap={{ scale: 0.97 }}
+                        onClick={() => onSetPick(match.id, team)}
+                        className={`flex items-center gap-2 p-3 rounded-xl border text-sm font-medium transition-all duration-200
+                          ${isSelected
+                            ? 'border-neon-blue/50 bg-neon-blue/10 text-neon-blue'
+                            : 'border-dark-border bg-dark-elevated text-white hover:border-dark-muted'
+                          }`}
+                      >
+                        <TeamLogo team={team} size="xs" />
+                        {IPL_TEAMS[team].name}
+                        {isSelected && <CheckCircle className="w-3.5 h-3.5 ml-auto" />}
+                      </motion.button>
+                    )
+                  })}
+                </div>
+              )}
+
+              {pickedWinner && (
+                <motion.button
+                  initial={{ opacity: 0, y: 6 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  disabled={isSaving}
+                  whileHover={{ scale: 1.02 }}
+                  whileTap={{ scale: 0.98 }}
+                  onClick={() => onSubmitPrediction(match.id, pickedWinner)}
+                  className="w-full py-3 rounded-xl text-sm font-bold bg-neon-blue text-white flex items-center justify-center gap-2 disabled:opacity-60"
+                  style={{ boxShadow: '0 0 20px rgba(0,102,204,0.4)' }}
+                >
+                  {isSaving ? 'Saving...' : hasSaved ? `Update to ${pickedWinner}` : `Lock in ${pickedWinner}`}
+                </motion.button>
+              )}
+            </div>
+          )}
+        </div>
+      )}
     </motion.div>
   )
 })
@@ -219,17 +208,15 @@ interface DaySectionProps {
   group: DayGroup
   confirmed: Record<string, IPLTeam>
   picks: Record<string, IPLTeam | null>
-  expanded: string | null
   saving: string | null
   predMap: Record<string, PredictionRow>
-  onToggleExpand: (id: string) => void
   onSetPick: (matchId: string, team: IPLTeam) => void
   onSubmitPrediction: (matchId: string, winner: IPLTeam) => void
 }
 
 function DaySection({
-  group, confirmed, picks, expanded, saving, predMap,
-  onToggleExpand, onSetPick, onSubmitPrediction,
+  group, confirmed, picks, saving, predMap,
+  onSetPick, onSubmitPrediction,
 }: DaySectionProps) {
   const [now, setNow] = useState(() => new Date())
 
@@ -294,9 +281,7 @@ function DaySection({
             existing={predMap[m.id]}
             confirmedWinner={confirmed[m.id]}
             pickedWinner={picks[m.id] ?? null}
-            isExpanded={expanded === m.id}
             isSaving={saving === m.id}
-            onToggleExpand={onToggleExpand}
             onSetPick={onSetPick}
             onSubmitPrediction={onSubmitPrediction}
           />
@@ -313,7 +298,6 @@ export function MatchesClient({ matches, userPredictions, userId }: Props) {
   const [confirmed, setConfirmed] = useState<Record<string, IPLTeam>>(() =>
     Object.fromEntries(userPredictions.map(p => [p.match_id, p.predicted_match_winner]))
   )
-  const [expanded, setExpanded] = useState<string | null>(null)
   const [isPending, startTransition] = useTransition()
   const [saving, setSaving] = useState<string | null>(null)
 
@@ -363,11 +347,6 @@ export function MatchesClient({ matches, userPredictions, userId }: Props) {
     }
   }, [dayGroups])
 
-  // Stable callbacks so MatchCard memo comparisons hold
-  const handleToggleExpand = useCallback((id: string) => {
-    setExpanded(prev => prev === id ? null : id)
-  }, [])
-
   const handleSetPick = useCallback((matchId: string, team: IPLTeam) => {
     setPicks(prev => ({ ...prev, [matchId]: team }))
   }, [])
@@ -385,7 +364,6 @@ export function MatchesClient({ matches, userPredictions, userId }: Props) {
       if (!error) {
         setConfirmed(prev => ({ ...prev, [matchId]: winner }))
         setPicks(prev => ({ ...prev, [matchId]: null }))
-        setExpanded(null)
       }
       setSaving(null)
     })
@@ -418,10 +396,8 @@ export function MatchesClient({ matches, userPredictions, userId }: Props) {
           group={group}
           confirmed={confirmed}
           picks={picks}
-          expanded={expanded}
           saving={saving}
           predMap={predMap}
-          onToggleExpand={handleToggleExpand}
           onSetPick={handleSetPick}
           onSubmitPrediction={handleSubmitPrediction}
         />
@@ -438,10 +414,8 @@ export function MatchesClient({ matches, userPredictions, userId }: Props) {
               group={group}
               confirmed={confirmed}
               picks={picks}
-              expanded={expanded}
               saving={saving}
               predMap={predMap}
-              onToggleExpand={handleToggleExpand}
               onSetPick={handleSetPick}
               onSubmitPrediction={handleSubmitPrediction}
             />
