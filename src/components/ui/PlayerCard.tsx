@@ -10,26 +10,32 @@ type Player = Database['public']['Tables']['ipl_players']['Row']
 type PlayerRole = Player['role']
 
 // ─── Country → emoji flag ──────────────────────────────────────────────────
+// Keys are lowercase so the lookup is case-insensitive regardless of what's
+// stored in the DB (e.g. "India", "INDIA", "india" all resolve correctly).
 const COUNTRY_FLAGS: Record<string, string> = {
-  India: '🇮🇳',
-  Australia: '🇦🇺',
-  England: '🏴󠁧󠁢󠁥󠁮󠁧󠁿',
-  'South Africa': '🇿🇦',
-  'West Indies': '🏝️',
-  'New Zealand': '🇳🇿',
-  'Sri Lanka': '🇱🇰',
-  Pakistan: '🇵🇰',
-  Afghanistan: '🇦🇫',
-  Bangladesh: '🇧🇩',
-  Zimbabwe: '🇿🇼',
-  Ireland: '🇮🇪',
-  Netherlands: '🇳🇱',
+  'india': '🇮🇳',
+  'australia': '🇦🇺',
+  'england': '🏴󠁧󠁢󠁥󠁮󠁧󠁿',
+  'south africa': '🇿🇦',
+  'west indies': '🏝️',
+  'new zealand': '🇳🇿',
+  'sri lanka': '🇱🇰',
+  'pakistan': '🇵🇰',
+  'afghanistan': '🇦🇫',
+  'bangladesh': '🇧🇩',
+  'zimbabwe': '🇿🇼',
+  'ireland': '🇮🇪',
+  'scotland': '🏴󠁧󠁢󠁳󠁣󠁴󠁿',
+  'netherlands': '🇳🇱',
 }
 
 function countryFlag(country: string | null): string {
-  if (!country) return '🏳️'
-  return COUNTRY_FLAGS[country] ?? '🏳️'
+  if (!country) return ''
+  return COUNTRY_FLAGS[country.toLowerCase().trim()] ?? ''
 }
+
+// ─── Debug: log resolved flags for first 5 PickablePlayerCard renders ──────
+let _debugCount = 0
 
 // ─── Stat relevance by role ────────────────────────────────────────────────
 function isStatRelevant(stat: 'runs' | 'wickets' | 'sr' | 'eco', role: PlayerRole): boolean {
@@ -147,6 +153,15 @@ export function PickablePlayerCard({ player, isPicked, isLocked, onPick }: Picka
   const ref = useRef<HTMLButtonElement>(null!)
   const inView = useInView(ref)
   const color = ROLE_COLORS[player.role]
+
+  // Debug: log raw country + resolved flag for first 5 cards (remove once confirmed working)
+  useEffect(() => {
+    if (_debugCount < 5) {
+      _debugCount++
+      console.log(`[PlayerCard flag debug] name="${player.name}" country="${player.country}" flag="${countryFlag(player.country)}"`)
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   return (
     <motion.button
