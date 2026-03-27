@@ -78,7 +78,7 @@ export default function SyncPage() {
   // Scorecard sync
   const [scorecardLoading, setScorecardLoading] = useState(false)
   const [scorecardResult, setScorecardResult] = useState<SyncResult | null>(null)
-  const [espnMatchId, setEspnMatchId] = useState('')
+  const [cricapiMatchId, setCricapiMatchId] = useState('')
   const [dbMatchId, setDbMatchId] = useState('')
   const [matches, setMatches] = useState<any[]>([])
   const [matchesLoaded, setMatchesLoaded] = useState(false)
@@ -86,7 +86,7 @@ export default function SyncPage() {
   async function loadMatches() {
     const { data } = await supabase
       .from('matches')
-      .select('id, team_a, team_b, match_date, espn_match_id, status')
+      .select('id, team_a, team_b, match_date, cricapi_match_id, status')
       .eq('status', 'completed')
       .order('match_date', { ascending: false })
     setMatches(data ?? [])
@@ -126,21 +126,21 @@ export default function SyncPage() {
   }
 
   async function syncScorecard() {
-    if (!espnMatchId || !dbMatchId) return
+    if (!cricapiMatchId || !dbMatchId) return
     setScorecardLoading(true)
     setScorecardResult(null)
     try {
       const res = await fetch('/api/sync/scorecard', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ espnMatchId: Number(espnMatchId), matchId: dbMatchId }),
+        body: JSON.stringify({ cricapiMatchId, matchId: dbMatchId }),
       })
       const json = await res.json()
       if (!res.ok) setScorecardResult({ ok: false, message: 'Sync failed', detail: json.error, raw: json })
       else setScorecardResult({
         ok: true,
         message: `Scorecard synced`,
-        detail: `${json.statsUpserted} player stats · ${json.fantasyTeamsScored} fantasy teams scored`,
+        detail: `${json.statsUpserted} player stats · ${json.fantasyTeamsScored} fantasy teams scored · ${json.unmatchedPlayers ?? 0} unmatched`,
         raw: json,
       })
     } catch (e: any) {
@@ -216,7 +216,7 @@ export default function SyncPage() {
                 onChange={e => {
                   setDbMatchId(e.target.value)
                   const m = matches.find(x => x.id === e.target.value)
-                  if (m?.espn_match_id) setEspnMatchId(String(m.espn_match_id))
+                  if (m?.cricapi_match_id) setCricapiMatchId(String(m.cricapi_match_id))
                 }}
                 className="w-full bg-dark-card border border-dark-border rounded-xl px-3 py-2 text-white text-sm focus:outline-none focus:border-neon-green/50"
               >
@@ -224,24 +224,24 @@ export default function SyncPage() {
                 {matches.map(m => (
                   <option key={m.id} value={m.id}>
                     {m.team_a} vs {m.team_b} · {new Date(m.match_date).toLocaleDateString()}
-                    {m.espn_match_id ? ` (ESPN: ${m.espn_match_id})` : ' (no ESPN ID)'}
+                    {m.cricapi_match_id ? ` (CricAPI: ${m.cricapi_match_id.slice(0, 8)}…)` : ' (no CricAPI ID)'}
                   </option>
                 ))}
               </select>
             )}
           </div>
 
-          {/* Manual ESPN match ID override */}
+          {/* Manual CricAPI match ID override */}
           <div>
             <label className="block text-xs text-dark-muted font-medium mb-1.5">
-              ESPN Match ID
-              <span className="text-dark-muted/50 ml-1 font-normal">(from URL: espncricinfo.com/…/match-id)</span>
+              CricAPI Match ID
+              <span className="text-dark-muted/50 ml-1 font-normal">(UUID — auto-filled when you pick a synced match above)</span>
             </label>
             <input
-              type="number"
-              value={espnMatchId}
-              onChange={e => setEspnMatchId(e.target.value)}
-              placeholder="e.g. 1430886"
+              type="text"
+              value={cricapiMatchId}
+              onChange={e => setCricapiMatchId(e.target.value)}
+              placeholder="e.g. b39bbd39-c67f-4892-9a48-02e958946718"
               className="w-full bg-dark-card border border-dark-border rounded-xl px-3 py-2 text-white text-sm placeholder:text-dark-muted/40 focus:outline-none focus:border-neon-green/50"
             />
           </div>
@@ -261,7 +261,7 @@ export default function SyncPage() {
 
           <button
             onClick={syncScorecard}
-            disabled={scorecardLoading || !espnMatchId || !dbMatchId}
+            disabled={scorecardLoading || !cricapiMatchId || !dbMatchId}
             className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-bold bg-neon-green text-dark-base disabled:opacity-40 hover:brightness-110 transition-all"
             style={{ boxShadow: '0 0 16px rgba(57,255,20,0.3)' }}
           >
@@ -276,12 +276,12 @@ export default function SyncPage() {
       <div className="glass border border-dark-border/50 rounded-2xl p-5 text-sm text-dark-muted space-y-2">
         <p className="text-white font-semibold text-sm">Setup checklist</p>
         <ol className="list-decimal list-inside space-y-1 text-xs">
-          <li>Run <code className="text-neon-green">supabase/migration_espn_ids.sql</code> in Supabase SQL Editor</li>
-          <li>Click <strong className="text-white">Sync Full Schedule</strong> — this pulls all 74 IPL 2026 matches</li>
-          <li>Click <strong className="text-white">Sync Squads</strong> with "All Teams" — imports all ~220 players</li>
-          <li>After each match: find the ESPN Match ID from the scorecard URL, select the match, click <strong className="text-white">Fetch Scorecard</strong></li>
+          <li>Run <code className="text-neon-green">supabase/migration_cricapi.sql</code> in Supabase SQL Editor</li>
+          <li>Click <strong className="text-white">Sync Full Schedule</strong> — pulls all IPL 2026 matches from CricAPI</li>
+          <li>Click <strong className="text-white">Sync Squads</strong> with "All Teams" — imports all ~220 players with countries</li>
+          <li>After each match: click <strong className="text-white">Load matches</strong>, select the completed match (CricAPI ID auto-fills), click <strong className="text-white">Fetch Scorecard</strong></li>
         </ol>
-        <p className="text-xs pt-1">ESPN Match ID is the number in the match URL, e.g. <code className="text-neon-green">/match/1430886/...</code></p>
+        <p className="text-xs pt-1">Data source: <code className="text-neon-green">cricketdata.org</code> (CricAPI)</p>
       </div>
     </div>
   )

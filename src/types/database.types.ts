@@ -88,6 +88,8 @@ export interface Database {
           toss_decision: 'bat' | 'bowl' | null
           match_winner: IPLTeam | null
           created_at: string
+          espn_match_id: number | null
+          cricapi_match_id: string | null
         }
         Insert: {
           id?: string
@@ -102,6 +104,8 @@ export interface Database {
           toss_decision?: 'bat' | 'bowl' | null
           match_winner?: IPLTeam | null
           created_at?: string
+          espn_match_id?: number | null
+          cricapi_match_id?: string | null
         }
         Update: {
           id?: string
@@ -116,6 +120,8 @@ export interface Database {
           toss_decision?: 'bat' | 'bowl' | null
           match_winner?: IPLTeam | null
           created_at?: string
+          espn_match_id?: number | null
+          cricapi_match_id?: string | null
         }
       }
       ipl_players: {
@@ -132,6 +138,8 @@ export interface Database {
           career_wickets: number | null
           strike_rate: number | null
           economy_rate: number | null
+          espn_player_id: number | null
+          cricapi_player_id: string | null
         }
         Insert: {
           id?: string
@@ -146,6 +154,8 @@ export interface Database {
           career_wickets?: number | null
           strike_rate?: number | null
           economy_rate?: number | null
+          espn_player_id?: number | null
+          cricapi_player_id?: string | null
         }
         Update: {
           id?: string
@@ -160,6 +170,8 @@ export interface Database {
           career_wickets?: number | null
           strike_rate?: number | null
           economy_rate?: number | null
+          espn_player_id?: number | null
+          cricapi_player_id?: string | null
         }
       }
       predictions: {
