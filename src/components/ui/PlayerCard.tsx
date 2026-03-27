@@ -181,7 +181,7 @@ export function PickablePlayerCard({ player, isPicked, isLocked, onPick }: Picka
           <p className="text-sm font-semibold text-white truncate leading-tight">{player.name}</p>
           <div className="flex items-center gap-1.5 mt-0.5">
             {player.country && (
-              <span className="text-[10px]">{countryFlag(player.country)}</span>
+              <span className="text-sm leading-none">{countryFlag(player.country)}</span>
             )}
             <TeamLogo team={player.team} size="xs" />
             <span className="text-[10px]" style={{ color }}>
@@ -230,7 +230,7 @@ export function CompactPlayerCard({ player, showStats = false, onRemove }: Compa
         <p className="text-sm font-medium text-white truncate leading-tight">{player.name}</p>
         <div className="flex items-center gap-1.5 mt-0.5">
           {player.country && (
-            <span className="text-[10px]">{countryFlag(player.country)}</span>
+            <span className="text-sm leading-none">{countryFlag(player.country)}</span>
           )}
           <TeamLogo team={player.team} size="xs" />
           <span className="text-[10px] text-dark-muted">{ROLE_LABELS[player.role]}</span>
