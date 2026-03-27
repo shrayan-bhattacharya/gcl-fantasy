@@ -3,7 +3,7 @@
 import { useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { createClient } from '@/lib/supabase/client'
-import { Calendar, Users, BarChart2, CheckCircle, XCircle, Loader2, RefreshCw, Link } from 'lucide-react'
+import { Calendar, Users, BarChart2, CheckCircle, XCircle, Loader2, RefreshCw, AlertTriangle } from 'lucide-react'
 
 interface SyncResult {
   ok: boolean
@@ -66,6 +66,11 @@ function SyncCard({ icon: Icon, title, description, children }: {
 export default function SyncPage() {
   const supabase = createClient()
 
+  // Full reset
+  const [resetLoading, setResetLoading] = useState(false)
+  const [resetResult, setResetResult] = useState<SyncResult | null>(null)
+  const [resetConfirm, setResetConfirm] = useState(false)
+
   // Schedule sync
   const [scheduleLoading, setScheduleLoading] = useState(false)
   const [scheduleResult, setScheduleResult] = useState<SyncResult | null>(null)
@@ -93,6 +98,25 @@ export default function SyncPage() {
     setMatchesLoaded(true)
   }
 
+  async function fullResetResync() {
+    setResetLoading(true)
+    setResetResult(null)
+    setResetConfirm(false)
+    try {
+      const res = await fetch('/api/sync/squads', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ reset: true }),
+      })
+      const json = await res.json()
+      if (!res.ok) setResetResult({ ok: false, message: 'Reset failed', detail: json.error, raw: json })
+      else setResetResult({ ok: true, message: `Reset complete — ${json.deduped} players synced`, detail: `${json.upserted} rows upserted · ${json.duplicates?.length ?? 0} duplicates removed`, raw: json })
+    } catch (e: any) {
+      setResetResult({ ok: false, message: 'Network error', detail: e.message })
+    }
+    setResetLoading(false)
+  }
+
   async function syncSchedule() {
     setScheduleLoading(true)
     setScheduleResult(null)
@@ -118,7 +142,7 @@ export default function SyncPage() {
       })
       const json = await res.json()
       if (!res.ok) setSquadResult({ ok: false, message: 'Sync failed', detail: json.error, raw: json })
-      else setSquadResult({ ok: true, message: `Synced ${json.synced} players`, detail: `Team: ${json.team}`, raw: json })
+      else setSquadResult({ ok: true, message: `Synced ${json.deduped ?? json.synced} players`, detail: `${json.raw} raw · ${json.duplicates?.length ?? 0} dupes removed · Team: ${json.team}`, raw: json })
     } catch (e: any) {
       setSquadResult({ ok: false, message: 'Network error', detail: e.message })
     }
@@ -155,13 +179,54 @@ export default function SyncPage() {
     <div className="max-w-3xl mx-auto space-y-6">
       <div>
         <h1 className="text-2xl font-black text-white" style={{ fontFamily: 'Outfit, sans-serif' }}>
-          ESPN Sync
+          CricAPI Sync
         </h1>
-        <p className="text-dark-muted text-sm mt-1">Pull live IPL 2026 data from ESPN Cricinfo into your database.</p>
+        <p className="text-dark-muted text-sm mt-1">Pull live IPL 2026 data from CricAPI (cricketdata.org) into your database.</p>
       </div>
 
+      {/* Full Reset */}
+      <motion.div
+        initial={{ opacity: 0, y: 16 }}
+        animate={{ opacity: 1, y: 0 }}
+        className="border border-red-500/30 bg-red-500/5 rounded-2xl p-6"
+      >
+        <div className="flex items-start gap-4 mb-4">
+          <div className="w-10 h-10 rounded-xl bg-red-500/10 border border-red-500/20 flex items-center justify-center shrink-0">
+            <AlertTriangle className="w-5 h-5 text-red-400" />
+          </div>
+          <div>
+            <h3 className="text-white font-bold" style={{ fontFamily: 'Outfit, sans-serif' }}>Full Reset + Resync</h3>
+            <p className="text-dark-muted text-sm mt-0.5">Wipes ipl_players, fantasy_teams, fantasy_scores, player_match_stats — then re-syncs all squads from CricAPI. Use in emergencies only.</p>
+          </div>
+        </div>
+        {!resetConfirm ? (
+          <button
+            onClick={() => setResetConfirm(true)}
+            disabled={resetLoading}
+            className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-bold bg-red-600 text-white disabled:opacity-60 hover:bg-red-500 transition-all"
+          >
+            <AlertTriangle className="w-4 h-4" />
+            Full Reset + Resync Players
+          </button>
+        ) : (
+          <div className="flex items-center gap-3">
+            <span className="text-sm text-red-400 font-medium">This will wipe all player + fantasy data. Sure?</span>
+            <button
+              onClick={fullResetResync}
+              disabled={resetLoading}
+              className="flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-bold bg-red-600 text-white hover:bg-red-500 transition-all disabled:opacity-60"
+            >
+              {resetLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : null}
+              {resetLoading ? 'Resetting...' : 'Yes, wipe and resync'}
+            </button>
+            <button onClick={() => setResetConfirm(false)} className="text-sm text-dark-muted hover:text-white transition-colors">Cancel</button>
+          </div>
+        )}
+        {resetResult && <ResultBadge result={resetResult} />}
+      </motion.div>
+
       {/* Schedule */}
-      <SyncCard icon={Calendar} title="Sync Schedule" description="Pull all IPL 2026 match fixtures, venues, and results from ESPN.">
+      <SyncCard icon={Calendar} title="Sync Schedule" description="Pull all IPL 2026 match fixtures, venues, and results from CricAPI.">
         <button
           onClick={syncSchedule}
           disabled={scheduleLoading}
@@ -175,7 +240,7 @@ export default function SyncPage() {
       </SyncCard>
 
       {/* Squads */}
-      <SyncCard icon={Users} title="Sync Player Squads" description="Import all team rosters with player roles from ESPN.">
+      <SyncCard icon={Users} title="Sync Player Squads" description="Import all team rosters with player roles from CricAPI. Deduplicates by name automatically.">
         <div className="flex gap-3 flex-wrap">
           <select
             value={squadTeam}
@@ -275,10 +340,11 @@ export default function SyncPage() {
       <div className="glass border border-dark-border/50 rounded-2xl p-5 text-sm text-dark-muted space-y-2">
         <p className="text-white font-semibold text-sm">Setup checklist</p>
         <ol className="list-decimal list-inside space-y-1 text-xs">
-          <li>Run <code className="text-neon-green">supabase/migration_cricapi.sql</code> in Supabase SQL Editor</li>
-          <li>Click <strong className="text-white">Sync Full Schedule</strong> — pulls all IPL 2026 matches from CricAPI</li>
-          <li>Click <strong className="text-white">Sync Squads</strong> with "All Teams" — imports all ~220 players with countries</li>
-          <li>After each match: click <strong className="text-white">Load matches</strong>, select the completed match (CricAPI ID auto-fills), click <strong className="text-white">Fetch Scorecard</strong></li>
+          <li>Run <code className="text-neon-green">migration_cricapi.sql</code> then <code className="text-neon-green">migration_unique_player_name.sql</code> in Supabase SQL Editor</li>
+          <li>Click <strong className="text-white">Sync Full Schedule</strong> — pulls all IPL 2026 matches</li>
+          <li>Click <strong className="text-white">Sync Squads (All Teams)</strong> — imports ~220 players, deduped by name</li>
+          <li>After each match: <strong className="text-white">Load matches</strong> → select → <strong className="text-white">Fetch Scorecard + Score Fantasy</strong></li>
+          <li>If duplicates appear: use <strong className="text-red-400">Full Reset + Resync</strong> to start clean</li>
         </ol>
         <p className="text-xs pt-1">Data source: <code className="text-neon-green">cricketdata.org</code> (CricAPI)</p>
       </div>
