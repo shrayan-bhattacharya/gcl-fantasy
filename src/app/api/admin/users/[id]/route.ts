@@ -39,12 +39,22 @@ export async function DELETE(
 ) {
   if (!await verifyAdmin()) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
 
+  if (!process.env.SUPABASE_SERVICE_ROLE_KEY) {
+    return NextResponse.json({ error: 'SUPABASE_SERVICE_ROLE_KEY is not configured on the server' }, { status: 500 })
+  }
+
   const { id } = await params
   const admin = getAdminClient()
 
-  // Deleting from auth.users cascades to public.users via FK
-  const { error } = await admin.auth.admin.deleteUser(id)
-  if (error) return NextResponse.json({ error: error.message }, { status: 400 })
+  // Explicitly delete from public.users first so all FK-cascading child rows
+  // (predictions, fantasy_teams, fantasy_scores) are removed regardless of
+  // whether the auth.users → public.users FK has ON DELETE CASCADE.
+  const { error: dbErr } = await admin.from('users').delete().eq('id', id)
+  if (dbErr) return NextResponse.json({ error: `Profile delete failed: ${dbErr.message}` }, { status: 400 })
+
+  // Delete from auth.users
+  const { error: authErr } = await admin.auth.admin.deleteUser(id)
+  if (authErr) return NextResponse.json({ error: `Auth delete failed: ${authErr.message}` }, { status: 400 })
 
   return NextResponse.json({ ok: true })
 }

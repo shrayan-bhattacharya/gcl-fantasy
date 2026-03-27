@@ -73,8 +73,10 @@ export default function AdminUsers() {
       setUsers(prev => prev.filter(p => p.id !== u.id))
       flash(`${u.display_name ?? u.email} deleted`)
     } else {
-      const { error } = await res.json()
-      flash(`Error: ${error}`)
+      const text = await res.text()
+      let errorMsg = `HTTP ${res.status}`
+      try { errorMsg = JSON.parse(text).error ?? errorMsg } catch { errorMsg = text || errorMsg }
+      flash(`Error: ${errorMsg}`)
     }
     setActionId(null)
   }
