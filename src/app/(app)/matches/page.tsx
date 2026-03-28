@@ -20,7 +20,7 @@ export default async function MatchesPage() {
       matches={matches ?? []}
       userPredictions={predictions ?? []}
       userId={user!.id}
-      predictionWindowOpen={predWindow?.is_open ?? false}
+      predictionWindowOpen={predWindow?.is_open ?? true}
     />
   )
 }
