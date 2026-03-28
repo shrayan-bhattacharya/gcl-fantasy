@@ -21,33 +21,45 @@ export async function GET() {
 }
 
 export async function POST(request: Request) {
-  const admin = await getAdminUser()
-  if (!admin) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+  try {
+    const admin = await getAdminUser()
+    if (!admin) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
 
-  const body = await request.json()
-  if (typeof body.is_open !== 'boolean') {
-    return NextResponse.json({ error: 'is_open must be boolean' }, { status: 400 })
+    const body = await request.json()
+    if (typeof body.is_open !== 'boolean') {
+      return NextResponse.json({ error: 'is_open must be boolean' }, { status: 400 })
+    }
+
+    const supabase = await createServiceClient()
+    const now = new Date().toISOString()
+
+    const update: Record<string, unknown> = {
+      is_open: body.is_open,
+      updated_at: now,
+      opened_by: admin.id,
+    }
+    if (body.is_open) {
+      update.opened_at = now
+    }
+
+    console.log('prediction-window update payload:', update)
+
+    const { data, error } = await supabase
+      .from('prediction_window')
+      .update(update)
+      .eq('id', 'b9017162-40c0-434a-91ed-f78008be6cbe')
+      .select()
+      .single()
+
+    if (error) {
+      console.error('prediction-window supabase error:', error)
+      return NextResponse.json({ error: error.message, details: error }, { status: 500 })
+    }
+
+    return NextResponse.json(data)
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err)
+    console.error('prediction-window error:', msg, err)
+    return NextResponse.json({ error: msg }, { status: 500 })
   }
-
-  const supabase = await createServiceClient()
-  const now = new Date().toISOString()
-
-  const update: Record<string, unknown> = {
-    is_open: body.is_open,
-    updated_at: now,
-    opened_by: admin.id,
-  }
-  if (body.is_open) {
-    update.opened_at = now
-  }
-
-  const { data, error } = await supabase
-    .from('prediction_window')
-    .update(update)
-    .eq('id', 'b9017162-40c0-434a-91ed-f78008be6cbe')
-    .select()
-    .single()
-
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
-  return NextResponse.json(data)
 }
