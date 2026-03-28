@@ -44,7 +44,7 @@ export async function POST(request: Request) {
   const { data, error } = await supabase
     .from('prediction_window')
     .update(update)
-    .not('id', 'is', null)
+    .eq('id', 'b9017162-40c0-434a-91ed-f78008be6cbe')
     .select()
     .single()
 

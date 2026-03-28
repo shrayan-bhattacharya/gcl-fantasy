@@ -11,6 +11,7 @@ export function PredictionWindowControl({ initialOpen }: Props) {
   const [isOpen, setIsOpen] = useState(initialOpen)
   const [loading, setLoading] = useState(false)
   const [status, setStatus] = useState<'idle' | 'saved' | 'error'>('idle')
+  const [savedMsg, setSavedMsg] = useState('')
   const [errorMsg, setErrorMsg] = useState('')
 
   async function toggle() {
@@ -27,8 +28,9 @@ export function PredictionWindowControl({ initialOpen }: Props) {
       const data = await res.json()
       if (res.ok) {
         setIsOpen(data.is_open)   // confirm with server value
+        setSavedMsg(data.is_open ? 'Predictions opened' : 'Predictions closed')
         setStatus('saved')
-        setTimeout(() => setStatus('idle'), 3000)
+        setTimeout(() => setStatus('idle'), 2000)
       } else {
         setIsOpen(!newValue)      // revert on failure
         setStatus('error')
@@ -82,7 +84,7 @@ export function PredictionWindowControl({ initialOpen }: Props) {
 
           {status === 'saved' && (
             <span className="flex items-center gap-1 text-xs text-neon-green font-semibold">
-              <CheckCircle className="w-3.5 h-3.5" /> Saved
+              <CheckCircle className="w-3.5 h-3.5" /> {savedMsg}
             </span>
           )}
           {status === 'error' && (
