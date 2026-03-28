@@ -1,7 +1,7 @@
 'use client'
 
 import { motion, AnimatePresence } from 'framer-motion'
-import { useState, useTransition, useEffect } from 'react'
+import { useState, useTransition, useEffect, useReducer } from 'react'
 import { PageWrapper, AnimatedSection } from '@/components/layout/PageWrapper'
 import { IPL_TEAMS, ROLE_COLORS, ROLE_ICONS, ROLE_LABELS } from '@/constants/ipl'
 import { PickablePlayerCard, CompactPlayerCard } from '@/components/ui/PlayerCard'
@@ -37,22 +37,48 @@ const SLOT_LABELS = [
   { key: 'flex', label: 'All-Rounder / WK', role: 'flex' },
 ] as const
 
+const SLOT_KEYS = SLOT_LABELS.map(s => s.key) as (keyof SelectedTeam)[]
+
+type SquadAction =
+  | { type: 'PICK'; slot: keyof SelectedTeam; player: Player }
+  | { type: 'REMOVE'; slot: keyof SelectedTeam }
+  | { type: 'SET_SLOT'; slot: keyof SelectedTeam | null }
+
+interface SquadState {
+  team: SelectedTeam
+  activeSlot: keyof SelectedTeam | null
+}
+
+function squadReducer(state: SquadState, action: SquadAction): SquadState {
+  switch (action.type) {
+    case 'PICK': {
+      const newTeam = { ...state.team, [action.slot]: action.player }
+      const currentIdx = SLOT_KEYS.indexOf(action.slot)
+      const nextSlot = SLOT_KEYS.slice(currentIdx + 1).find(k => !newTeam[k]) ?? null
+      return { team: newTeam, activeSlot: nextSlot }
+    }
+    case 'REMOVE':
+      return { team: { ...state.team, [action.slot]: null }, activeSlot: action.slot }
+    case 'SET_SLOT':
+      return { ...state, activeSlot: action.slot }
+  }
+}
+
 export function FantasyClient({ players, existingTeam, isLocked, phase, userId }: Props) {
-  const [team, setTeam] = useState<SelectedTeam>(() => {
+  const [{ team, activeSlot }, dispatch] = useReducer(squadReducer, undefined, () => {
     if (existingTeam) {
       return {
-        batsman_1: existingTeam.batsman_1,
-        batsman_2: existingTeam.batsman_2,
-        bowler_1: existingTeam.bowler_1,
-        bowler_2: existingTeam.bowler_2,
-        flex: existingTeam.flex,
+        team: {
+          batsman_1: existingTeam.batsman_1,
+          batsman_2: existingTeam.batsman_2,
+          bowler_1: existingTeam.bowler_1,
+          bowler_2: existingTeam.bowler_2,
+          flex: existingTeam.flex,
+        },
+        activeSlot: null as keyof SelectedTeam | null,
       }
     }
-    return emptyTeam
-  })
-  const [activeSlot, setActiveSlot] = useState<keyof SelectedTeam | null>(() => {
-    if (existingTeam) return null
-    return 'batsman_1'
+    return { team: emptyTeam, activeSlot: 'batsman_1' as keyof SelectedTeam | null }
   })
   const [search, setSearch] = useState('')
   const [filterTeam, setFilterTeam] = useState<string>('all')
@@ -98,18 +124,11 @@ export function FantasyClient({ players, existingTeam, isLocked, phase, userId }
   function pickPlayer(player: Player) {
     if (!activeSlot) return
     if (pickedIds.has(player.id)) return
-
-    setTeam(prev => ({ ...prev, [activeSlot]: player }))
-
-    const slotKeys = SLOT_LABELS.map(s => s.key)
-    const currentIdx = slotKeys.indexOf(activeSlot)
-    const nextSlot = slotKeys.slice(currentIdx + 1).find(k => !team[k])
-    setActiveSlot(nextSlot ?? null)
+    dispatch({ type: 'PICK', slot: activeSlot, player })
   }
 
   function removePlayer(slot: keyof SelectedTeam) {
-    setTeam(prev => ({ ...prev, [slot]: null }))
-    setActiveSlot(slot)
+    dispatch({ type: 'REMOVE', slot })
   }
 
   const isComplete = Object.values(team).every(Boolean)
@@ -206,7 +225,7 @@ export function FantasyClient({ players, existingTeam, isLocked, phase, userId }
                     <motion.div
                       key={slot.key}
                       whileHover={{ scale: 1.01 }}
-                      onClick={() => setActiveSlot(slot.key)}
+                      onClick={() => dispatch({ type: 'SET_SLOT', slot: slot.key })}
                       className={`flex items-center gap-3 p-3 rounded-xl border cursor-pointer transition-all duration-200
                         ${isActive ? 'border-neon-blue/50 bg-neon-blue/5 shadow-[0_0_12px_rgba(0,102,204,0.12)]' : 'border-dashed border-dark-border hover:border-dark-muted'}
                       `}
