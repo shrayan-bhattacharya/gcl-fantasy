@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server'
-import { createClient, createServiceClient } from '@/lib/supabase/server'
+import { createClient } from '@/lib/supabase/server'
 
 async function getAdminUser() {
   const supabase = await createClient()
@@ -30,7 +30,7 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'is_open must be boolean' }, { status: 400 })
     }
 
-    const supabase = await createServiceClient()
+    const supabase = await createClient()
     const now = new Date().toISOString()
 
     const update: Record<string, unknown> = {
@@ -42,12 +42,10 @@ export async function POST(request: Request) {
       update.opened_at = now
     }
 
-    console.log('prediction-window update payload:', update)
-
     const { data, error } = await supabase
       .from('prediction_window')
       .update(update)
-      .eq('id', 'b9017162-40c0-434a-91ed-f78008be6cbe')
+      .not('id', 'is', null)
       .select()
       .single()
 
