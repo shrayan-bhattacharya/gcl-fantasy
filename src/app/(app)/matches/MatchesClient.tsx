@@ -10,8 +10,7 @@ import {
   formatTime, formatDayLabel,
   getMatchDay, getMatchDayLockTime, getMatchDayUnlockTime, formatCountdown,
 } from '@/lib/utils'
-import { createClient } from '@/lib/supabase/client'
-import { Calendar, CheckCircle, Lock, Target } from 'lucide-react'
+import { Calendar, CheckCircle, Lock, Target, AlertCircle } from 'lucide-react'
 import type { Database } from '@/types/database.types'
 import { PREDICTION_POINTS } from '@/constants/scoring'
 
@@ -23,6 +22,7 @@ interface Props {
   matches: MatchRow[]
   userPredictions: PredictionRow[]
   userId: string
+  predictionWindowOpen: boolean
 }
 
 interface DayGroup {
@@ -41,6 +41,8 @@ interface DayGroup {
 interface MatchCardProps {
   match: MatchRow
   dayIsLocked: boolean
+  matchDeadlinePassed: boolean
+  predWindowOpen: boolean
   existing: PredictionRow | undefined
   confirmedWinner: IPLTeam | undefined
   pickedWinner: IPLTeam | null
@@ -50,11 +52,17 @@ interface MatchCardProps {
 }
 
 const MatchCard = memo(function MatchCard({
-  match, dayIsLocked, existing, confirmedWinner, pickedWinner, isSaving,
+  match, dayIsLocked, matchDeadlinePassed, predWindowOpen,
+  existing, confirmedWinner, pickedWinner, isSaving,
   onSetPick, onSubmitPrediction,
 }: MatchCardProps) {
-  const isLocked = dayIsLocked || match.status === 'completed'
+  const isLocked = !predWindowOpen || dayIsLocked || matchDeadlinePassed || match.status === 'completed'
   const hasSaved = !!confirmedWinner
+  const lockReason = !predWindowOpen
+    ? 'Predictions are closed this week'
+    : matchDeadlinePassed
+      ? 'Match locked'
+      : 'Predictions locked for this match'
 
   return (
     <motion.div
@@ -124,12 +132,12 @@ const MatchCard = memo(function MatchCard({
       {match.status !== 'completed' && (
         <div className="px-4 pb-4 pt-1 border-t border-white/5">
           {isLocked ? (
-            /* Locked state — always visible */
+            /* Locked state */
             <div className="flex items-center gap-2 px-3 py-2 rounded-xl bg-neon-orange/5 border border-neon-orange/20 text-xs text-dark-muted">
               <Lock className="w-3 h-3 text-neon-orange shrink-0" />
               {hasSaved
                 ? <span>Locked in · You picked <strong className="text-white">{confirmedWinner}</strong></span>
-                : <span>Predictions locked for this match</span>
+                : <span>{lockReason}</span>
               }
             </div>
           ) : (
@@ -210,12 +218,13 @@ interface DaySectionProps {
   picks: Record<string, IPLTeam | null>
   saving: string | null
   predMap: Record<string, PredictionRow>
+  predWindowOpen: boolean
   onSetPick: (matchId: string, team: IPLTeam) => void
   onSubmitPrediction: (matchId: string, winner: IPLTeam) => void
 }
 
 function DaySection({
-  group, confirmed, picks, saving, predMap,
+  group, confirmed, picks, saving, predMap, predWindowOpen,
   onSetPick, onSubmitPrediction,
 }: DaySectionProps) {
   const [now, setNow] = useState(() => new Date())
@@ -278,6 +287,8 @@ function DaySection({
             key={m.id}
             match={m}
             dayIsLocked={isLocked}
+            matchDeadlinePassed={!!m.prediction_deadline && now >= new Date(m.prediction_deadline)}
+            predWindowOpen={predWindowOpen}
             existing={predMap[m.id]}
             confirmedWinner={confirmed[m.id]}
             pickedWinner={picks[m.id] ?? null}
@@ -293,7 +304,7 @@ function DaySection({
 
 // ─── MatchesClient ─────────────────────────────────────────────────────────
 
-export function MatchesClient({ matches, userPredictions, userId }: Props) {
+export function MatchesClient({ matches, userPredictions, userId, predictionWindowOpen }: Props) {
   const [picks, setPicks] = useState<Record<string, IPLTeam | null>>({})
   const [confirmed, setConfirmed] = useState<Record<string, IPLTeam>>(() =>
     Object.fromEntries(userPredictions.map(p => [p.match_id, p.predicted_match_winner]))
@@ -301,8 +312,7 @@ export function MatchesClient({ matches, userPredictions, userId }: Props) {
   const [isPending, startTransition] = useTransition()
   const [saving, setSaving] = useState<string | null>(null)
 
-  // Stable supabase client and predMap — don't recreate on each render
-  const supabase = useMemo(() => createClient(), [])
+  // Stable predMap — don't recreate on each render
   const predMap = useMemo(
     () => Object.fromEntries(userPredictions.map(p => [p.match_id, p])),
     [userPredictions]
@@ -354,20 +364,18 @@ export function MatchesClient({ matches, userPredictions, userId }: Props) {
   const handleSubmitPrediction = useCallback((matchId: string, winner: IPLTeam) => {
     setSaving(matchId)
     startTransition(async () => {
-      const { error } = await supabase.from('predictions').upsert({
-        user_id: userId,
-        match_id: matchId,
-        predicted_toss_winner: winner,
-        predicted_match_winner: winner,
-      }, { onConflict: 'user_id,match_id' })
-
-      if (!error) {
+      const res = await fetch('/api/predictions', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ matchId, winner }),
+      })
+      if (res.ok) {
         setConfirmed(prev => ({ ...prev, [matchId]: winner }))
         setPicks(prev => ({ ...prev, [matchId]: null }))
       }
       setSaving(null)
     })
-  }, [supabase, userId])
+  }, [])
 
   // suppress unused warning — startTransition keeps isPending for future use
   void isPending
@@ -382,13 +390,19 @@ export function MatchesClient({ matches, userPredictions, userId }: Props) {
           </div>
           <div className="flex items-center gap-2 glass px-3 py-2 rounded-xl border border-dark-border text-xs">
             <Lock className="w-3 h-3 text-dark-muted" />
-            <span className="text-dark-muted">Locks 1 hr before first match of the day</span>
-          </div>
-          <div className="flex items-center gap-2 glass px-3 py-2 rounded-xl border border-dark-border text-xs">
-            <span className="text-dark-muted">Unlocks at 1:00 AM the next day</span>
+            <span className="text-dark-muted">Locks 1 hr before each match</span>
           </div>
         </div>
       </AnimatedSection>
+
+      {!predictionWindowOpen && (
+        <AnimatedSection className="mb-5">
+          <div className="flex items-center gap-3 px-4 py-3 rounded-xl bg-dark-elevated border border-dark-border text-sm text-dark-muted">
+            <AlertCircle className="w-4 h-4 text-neon-orange shrink-0" />
+            <span>Predictions closed — check back next week when admin opens the window.</span>
+          </div>
+        </AnimatedSection>
+      )}
 
       {upcomingDays.map(group => (
         <DaySection
@@ -398,6 +412,7 @@ export function MatchesClient({ matches, userPredictions, userId }: Props) {
           picks={picks}
           saving={saving}
           predMap={predMap}
+          predWindowOpen={predictionWindowOpen}
           onSetPick={handleSetPick}
           onSubmitPrediction={handleSubmitPrediction}
         />
@@ -416,6 +431,7 @@ export function MatchesClient({ matches, userPredictions, userId }: Props) {
               picks={picks}
               saving={saving}
               predMap={predMap}
+              predWindowOpen={predictionWindowOpen}
               onSetPick={handleSetPick}
               onSubmitPrediction={handleSubmitPrediction}
             />

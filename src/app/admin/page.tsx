@@ -2,14 +2,16 @@ import { createClient } from '@/lib/supabase/server'
 import Link from 'next/link'
 import { Calendar, Users, BarChart2, UserPlus } from 'lucide-react'
 import { FantasyLockControl } from './FantasyLockControl'
+import { PredictionWindowControl } from './PredictionWindowControl'
 
 export default async function AdminOverview() {
   const supabase = await createClient()
-  const [{ count: matchCount }, { count: playerCount }, { count: userCount }, { data: lockSettings }] = await Promise.all([
+  const [{ count: matchCount }, { count: playerCount }, { count: userCount }, { data: lockSettings }, { data: predWindow }] = await Promise.all([
     supabase.from('matches').select('*', { count: 'exact', head: true }),
     supabase.from('ipl_players').select('*', { count: 'exact', head: true }),
     supabase.from('users').select('*', { count: 'exact', head: true }),
     supabase.from('fantasy_lock').select('is_locked, phase').limit(1).single(),
+    supabase.from('prediction_window').select('is_open').limit(1).single(),
   ])
 
   const cards = [
@@ -38,6 +40,11 @@ export default async function AdminOverview() {
       <FantasyLockControl
         initialLocked={lockSettings?.is_locked ?? false}
         initialPhase={lockSettings?.phase ?? 'league'}
+      />
+
+      {/* Prediction Window Control */}
+      <PredictionWindowControl
+        initialOpen={predWindow?.is_open ?? false}
       />
 
       <div className="glass rounded-xl border border-dark-border p-6 mt-6">

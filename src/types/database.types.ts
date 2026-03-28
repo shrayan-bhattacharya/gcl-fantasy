@@ -317,6 +317,29 @@ export interface Database {
           created_at?: string
         }
       }
+      prediction_window: {
+        Row: {
+          id: string
+          is_open: boolean
+          opened_at: string | null
+          opened_by: string | null
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          is_open?: boolean
+          opened_at?: string | null
+          opened_by?: string | null
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          is_open?: boolean
+          opened_at?: string | null
+          opened_by?: string | null
+          updated_at?: string
+        }
+      }
       fantasy_scores: {
         Row: {
           id: string

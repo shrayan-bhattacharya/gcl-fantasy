@@ -213,9 +213,9 @@ export function GettingStarted({ totalPredictions, totalMatches, hasFantasyTeam 
                       emoji="🏏"
                       title="Predict & Win"
                       bullets={[
-                        'Pick the match winner before each game',
-                        '50 points for every correct prediction',
-                        'Locks 1 hour before match — don\'t miss it!',
+                        'Predictions open weekly — admin announces when they\'re live',
+                        '50 points for every correct match winner',
+                        'Each match locks 1 hour before start time',
                       ]}
                       progress={predProgress}
                       cta="Make Predictions"
