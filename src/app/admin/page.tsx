@@ -44,7 +44,7 @@ export default async function AdminOverview() {
 
       {/* Prediction Window Control */}
       <PredictionWindowControl
-        initialOpen={predWindow?.is_open ?? false}
+        initialOpen={predWindow?.is_open ?? true}
       />
 
       <div className="glass rounded-xl border border-dark-border p-6 mt-6">
