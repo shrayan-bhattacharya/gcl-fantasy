@@ -1,7 +1,7 @@
 'use client'
 
 import { motion, AnimatePresence } from 'framer-motion'
-import { useState, useTransition, useEffect, useReducer } from 'react'
+import { useState, useEffect, useReducer } from 'react'
 import { PageWrapper, AnimatedSection } from '@/components/layout/PageWrapper'
 import { IPL_TEAMS, ROLE_COLORS, ROLE_ICONS, ROLE_LABELS } from '@/constants/ipl'
 import { PickablePlayerCard, CompactPlayerCard } from '@/components/ui/PlayerCard'
@@ -82,9 +82,21 @@ export function FantasyClient({ players, existingTeam, isLocked, phase, userId }
   })
   const [search, setSearch] = useState('')
   const [filterTeam, setFilterTeam] = useState<string>('all')
-  const [saved, setSaved] = useState(false)
+  const [savedTeam, setSavedTeam] = useState<SelectedTeam | null>(() => {
+    if (!existingTeam) return null
+    return {
+      batsman_1: existingTeam.batsman_1,
+      batsman_2: existingTeam.batsman_2,
+      bowler_1: existingTeam.bowler_1,
+      bowler_2: existingTeam.bowler_2,
+      flex: existingTeam.flex,
+    }
+  })
+  const [isSaving, setIsSaving] = useState(false)
   const [showConfetti, setShowConfetti] = useState(false)
-  const [isPending, startTransition] = useTransition()
+
+  // Whether the current picks differ from the last saved state
+  const isDirty = !savedTeam || SLOT_KEYS.some(k => team[k]?.id !== savedTeam[k]?.id)
 
   // Confetti burst when squad becomes complete
   useEffect(() => {
@@ -134,23 +146,21 @@ export function FantasyClient({ players, existingTeam, isLocked, phase, userId }
   const isComplete = Object.values(team).every(Boolean)
 
   async function saveTeam() {
-    if (!isComplete) return
-    startTransition(async () => {
-      const { error } = await supabase.from('fantasy_teams').upsert({
-        user_id: userId,
-        phase,
-        batsman_1_id: team.batsman_1!.id,
-        batsman_2_id: team.batsman_2!.id,
-        bowler_1_id: team.bowler_1!.id,
-        bowler_2_id: team.bowler_2!.id,
-        flex_player_id: team.flex!.id,
-      }, { onConflict: 'user_id,phase' })
-
-      if (!error) {
-        setSaved(true)
-        setTimeout(() => setSaved(false), 3000)
-      }
-    })
+    if (!isComplete || isSaving) return
+    setIsSaving(true)
+    const { error } = await supabase.from('fantasy_teams').upsert({
+      user_id: userId,
+      phase,
+      batsman_1_id: team.batsman_1!.id,
+      batsman_2_id: team.batsman_2!.id,
+      bowler_1_id: team.bowler_1!.id,
+      bowler_2_id: team.bowler_2!.id,
+      flex_player_id: team.flex!.id,
+    }, { onConflict: 'user_id,phase' })
+    setIsSaving(false)
+    if (!error) {
+      setSavedTeam({ ...team })
+    }
   }
 
   const phaseLabel = phase === 'league' ? 'League Stage' : 'Knockout Stage'
@@ -268,20 +278,22 @@ export function FantasyClient({ players, existingTeam, isLocked, phase, userId }
                 </AnimatePresence>
 
                 <motion.button
-                  disabled={!isComplete || isPending}
-                  whileHover={isComplete ? { scale: 1.02 } : {}}
-                  whileTap={isComplete ? { scale: 0.98 } : {}}
+                  disabled={!isComplete || isSaving || !isDirty}
+                  whileHover={isComplete && isDirty && !isSaving ? { scale: 1.02 } : {}}
+                  whileTap={isComplete && isDirty && !isSaving ? { scale: 0.98 } : {}}
                   onClick={saveTeam}
                   className={`w-full mt-2 py-3 rounded-xl text-sm font-bold flex items-center justify-center gap-2 transition-all duration-300
-                    ${saved
-                      ? 'bg-neon-blue/20 text-neon-blue border border-neon-blue/30'
-                      : isComplete
-                        ? 'bg-neon-blue text-white shadow-[0_0_20px_rgba(0,102,204,0.5)]'
-                        : 'bg-dark-elevated text-dark-muted border border-dark-border cursor-not-allowed'
+                    ${isSaving
+                      ? 'bg-dark-elevated text-dark-muted border border-dark-border cursor-not-allowed'
+                      : isComplete && !isDirty
+                        ? 'bg-neon-blue/20 text-neon-blue border border-neon-blue/30 cursor-default'
+                        : isComplete
+                          ? 'bg-neon-blue text-white shadow-[0_0_20px_rgba(0,102,204,0.5)]'
+                          : 'bg-dark-elevated text-dark-muted border border-dark-border cursor-not-allowed'
                     }`}
                 >
-                  {saved ? <><CheckCircle className="w-4 h-4" /> Squad Saved!</> :
-                    isPending ? 'Saving...' :
+                  {isSaving ? 'Saving...' :
+                    isComplete && !isDirty ? <><CheckCircle className="w-4 h-4" /> Squad Locked</> :
                     isComplete ? <><Zap className="w-4 h-4" /> Lock In Squad</> :
                     `Pick ${5 - Object.values(team).filter(Boolean).length} more player${5 - Object.values(team).filter(Boolean).length !== 1 ? 's' : ''}`
                   }
