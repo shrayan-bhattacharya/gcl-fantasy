@@ -14,10 +14,16 @@ INSERT INTO public.prediction_window (is_open)
 SELECT false
 WHERE NOT EXISTS (SELECT 1 FROM public.prediction_window);
 
--- 2. RLS: authenticated users can read; writes go through service-role API.
+-- 2. RLS: authenticated users can read and update (admin check is enforced in the API layer).
 ALTER TABLE public.prediction_window ENABLE ROW LEVEL SECURITY;
 
 CREATE POLICY "authenticated_read_prediction_window"
   ON public.prediction_window FOR SELECT
   TO authenticated
   USING (true);
+
+CREATE POLICY "admin_update_prediction_window"
+  ON public.prediction_window FOR UPDATE
+  TO authenticated
+  USING (true)
+  WITH CHECK (true);
