@@ -81,32 +81,39 @@ export default function AdminResults() {
     if (!w) return
 
     startTransition(async () => {
-      // Update match winner
-      await supabase.from('matches').update({ match_winner: w, status: 'completed' }).eq('id', matchId)
+      try {
+        // Update match winner
+        const { error: matchErr } = await supabase.from('matches').update({ match_winner: w, status: 'completed' }).eq('id', matchId)
+        if (matchErr) { alert('Match update failed: ' + matchErr.message); return }
 
-      // Upsert player stats
-      const matchStats = stats[matchId] ?? {}
-      for (const stat of Object.values(matchStats)) {
-        if (stat.player_id) {
-          await supabase.from('player_match_stats').upsert({
-            player_id: stat.player_id,
-            match_id: matchId,
-            runs_scored: stat.runs_scored,
-            wickets: stat.wickets,
-          }, { onConflict: 'player_id,match_id' })
+        // Upsert player stats
+        const matchStats = stats[matchId] ?? {}
+        for (const stat of Object.values(matchStats)) {
+          if (stat.player_id) {
+            await supabase.from('player_match_stats').upsert({
+              player_id: stat.player_id,
+              match_id: matchId,
+              runs_scored: stat.runs_scored,
+              wickets: stat.wickets,
+            }, { onConflict: 'player_id,match_id' })
+          }
         }
+
+        // Score predictions + fantasy via server route (bypasses RLS — scores ALL users)
+        const res = await fetch('/api/scoring', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ matchId }),
+        })
+        const result = await res.json()
+        if (!result.success) { alert('Scoring failed: ' + (result.error ?? JSON.stringify(result))); return }
+
+        setSaved(prev => ({ ...prev, [matchId]: true }))
+        setTimeout(() => setSaved(prev => ({ ...prev, [matchId]: false })), 3000)
+        loadData()
+      } catch (e: any) {
+        alert('Error: ' + (e?.message ?? String(e)))
       }
-
-      // Score predictions + fantasy via server route (bypasses RLS — scores ALL users)
-      await fetch('/api/scoring', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ matchId }),
-      })
-
-      setSaved(prev => ({ ...prev, [matchId]: true }))
-      setTimeout(() => setSaved(prev => ({ ...prev, [matchId]: false })), 3000)
-      loadData()
     })
   }
 
