@@ -29,14 +29,50 @@ export async function POST() {
       }
     })
 
-    const { error, count } = await supabase
-      .from('matches')
-      .upsert(rows, { onConflict: 'cricapi_match_id', ignoreDuplicates: false })
-      .select('id', { count: 'exact', head: true })
+    // Two-pass merge:
+    // Pass 1 — find seeded rows (cricapi_match_id IS NULL) matching by team + date (±2 h) and update them.
+    // Pass 2 — upsert any remaining rows that didn't match a seeded row.
+    const TWO_HOURS = 2 * 60 * 60 * 1000
+    const mergedIds: string[] = []
+    const toUpsert: typeof rows = []
 
-    if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+    for (const row of rows) {
+      const matchDate = new Date(row.match_date)
 
-    return NextResponse.json({ synced: matches.length, upserted: count, sample: rows.slice(0, 5) })
+      const { data: existing } = await supabase
+        .from('matches')
+        .select('id')
+        .is('cricapi_match_id', null)
+        .eq('team_a', row.team_a)
+        .eq('team_b', row.team_b)
+        .gte('match_date', new Date(matchDate.getTime() - TWO_HOURS).toISOString())
+        .lte('match_date', new Date(matchDate.getTime() + TWO_HOURS).toISOString())
+        .maybeSingle()
+
+      if (existing) {
+        await supabase.from('matches').update(row).eq('id', existing.id)
+        mergedIds.push(existing.id)
+      } else {
+        toUpsert.push(row)
+      }
+    }
+
+    let upserted = 0
+    if (toUpsert.length > 0) {
+      const { error, count } = await supabase
+        .from('matches')
+        .upsert(toUpsert, { onConflict: 'cricapi_match_id', ignoreDuplicates: false })
+        .select('id', { count: 'exact', head: true })
+      if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+      upserted = count ?? 0
+    }
+
+    return NextResponse.json({
+      synced: matches.length,
+      merged: mergedIds.length,
+      upserted,
+      sample: rows.slice(0, 5),
+    })
   } catch (err: any) {
     return NextResponse.json({ error: err.message }, { status: 500 })
   }
