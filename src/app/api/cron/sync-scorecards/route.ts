@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server'
 import { createServiceClient } from '@/lib/supabase/server'
-import { extractScorecard } from '@/lib/scorecard-ai'
+import { searchScorecard, extractFromNarrative } from '@/lib/scorecard-ai'
 import { runScoringPipeline } from '@/lib/scoring-pipeline'
 
 export async function GET(request: Request) {
@@ -39,7 +39,8 @@ export async function GET(request: Request) {
   for (const match of matches) {
     results.processed++
     try {
-      const scorecard = await extractScorecard(match.team_a, match.team_b, match.match_date)
+      const narrative = await searchScorecard(match.team_a, match.team_b, match.match_date)
+      const scorecard = await extractFromNarrative(narrative)
 
       if (scorecard.confidence === 'low') {
         await supabase.from('matches').update({
