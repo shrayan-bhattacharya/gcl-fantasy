@@ -31,6 +31,20 @@ export default async function FantasyPage() {
       .maybeSingle(),
   ])
 
+  // Fetch per-player fantasy points for this team
+  let playerPoints: Record<string, number> = {}
+  if (existingTeam?.id) {
+    const { data: scores } = await supabase
+      .from('fantasy_scores')
+      .select('player_id, total_points')
+      .eq('fantasy_team_id', existingTeam.id)
+    if (scores) {
+      for (const s of scores) {
+        playerPoints[s.player_id] = (playerPoints[s.player_id] ?? 0) + s.total_points
+      }
+    }
+  }
+
   return (
     <FantasyClient
       players={players ?? []}
@@ -38,6 +52,7 @@ export default async function FantasyPage() {
       isLocked={lockSettings?.is_locked ?? false}
       phase={phase}
       userId={user!.id}
+      playerPoints={playerPoints}
     />
   )
 }
