@@ -110,20 +110,20 @@ export function DashboardClient({ profile, rank, upcomingMatches, recentPredicti
 
               <div className="relative px-5 py-5">
                 <div className="flex items-center justify-between mb-4">
-                  <span className="text-xs font-bold tracking-widest text-neon-cyan uppercase">Matchday {matchday}</span>
-                  <span className="text-xs text-dark-muted">{formatMatchDate(todayMatch.match_date)}</span>
+                  <span className="text-xs font-bold tracking-widest uppercase" style={{ color: '#00e5ff' }}>Matchday {matchday}</span>
+                  <span className="text-xs" style={{ color: 'rgba(255,255,255,0.5)' }}>{formatMatchDate(todayMatch.match_date)}</span>
                 </div>
 
                 <div className="flex items-center justify-between gap-4">
                   <div className="flex flex-col items-center gap-2 flex-1">
                     <TeamLogo team={todayMatch.team_a} size="lg" />
-                    <span className="text-sm font-bold text-white">{todayMatch.team_a}</span>
+                    <span className="text-sm font-bold" style={{ color: '#ffffff' }}>{todayMatch.team_a}</span>
                   </div>
 
                   <div className="flex flex-col items-center gap-1 shrink-0">
-                    <span className="text-2xl font-black text-white" style={{ fontFamily: 'Outfit, sans-serif' }}>VS</span>
+                    <span className="text-2xl font-black" style={{ fontFamily: 'Outfit, sans-serif', color: '#ffffff' }}>VS</span>
                     {todayMatch.status === 'completed' && todayMatch.match_winner ? (
-                      <span className="text-xs text-neon-gold font-semibold">{todayMatch.match_winner} won</span>
+                      <span className="text-xs font-semibold" style={{ color: '#ffd700' }}>{todayMatch.match_winner} won</span>
                     ) : (
                       <StatusBadge status={todayMatch.status} />
                     )}
@@ -131,13 +131,13 @@ export function DashboardClient({ profile, rank, upcomingMatches, recentPredicti
 
                   <div className="flex flex-col items-center gap-2 flex-1">
                     <TeamLogo team={todayMatch.team_b} size="lg" />
-                    <span className="text-sm font-bold text-white">{todayMatch.team_b}</span>
+                    <span className="text-sm font-bold" style={{ color: '#ffffff' }}>{todayMatch.team_b}</span>
                   </div>
                 </div>
 
                 {todayMatch.status === 'upcoming' && (
                   <div className="mt-4 flex justify-center">
-                    <span className="text-xs font-bold px-4 py-1.5 rounded-full bg-neon-green/10 border border-neon-green/30 text-neon-green">
+                    <span className="text-xs font-bold px-4 py-1.5 rounded-full" style={{ background: 'rgba(57,255,20,0.1)', border: '1px solid rgba(57,255,20,0.3)', color: '#39ff14' }}>
                       Predict now →
                     </span>
                   </div>
