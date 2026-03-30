@@ -100,20 +100,23 @@ Report ALL the numbers you find — every batter and bowler from both teams.`
 
   const searchData = await callAnthropic(key, {
     model: 'claude-sonnet-4-6',
-    max_tokens: 4096,
+    max_tokens: 8192,
     tools: [{ type: 'web_search_20250305', name: 'web_search', max_uses: 5 }],
     messages: [{ role: 'user', content: searchPrompt }],
   })
+
+  console.log('[scorecard-ai] step1 stop_reason:', searchData.stop_reason)
 
   // Collect all text from the search response
   const textBlocks = (searchData.content ?? []).filter((b: any) => b.type === 'text')
   if (!textBlocks.length) throw new Error('No text response from web search step')
   const narrative = textBlocks.map((b: any) => b.text).join('\n')
+  console.log('[scorecard-ai] step1 narrative length:', narrative.length, 'chars')
 
   // ── Step 2: Convert narrative → structured JSON via forced tool_use ──
-  const extractPrompt = `Extract the cricket scorecard from this match data and call the submit_scorecard tool with the results.
+  const extractPrompt = `Extract the cricket scorecard from this match data and call the submit_scorecard tool with ALL the data.
 
-Include every player from both teams who batted, bowled, or fielded.
+You MUST include every player from both teams who batted, bowled, or fielded. There should be approximately 22 players total (11 per team).
 
 MATCH DATA:
 ${narrative}
@@ -124,12 +127,13 @@ Rules:
 - Bowlers who didn't bat: runs=0, balls_faced=0
 - Batters who didn't bowl: wickets=0, overs_bowled=0, economy_rate=0
 - economy_rate should be runs_per_over (e.g. 8.75)
+- Include ALL players — batsmen, bowlers, fielders, even those who scored 0
 
-You MUST call the submit_scorecard tool with the data.`
+Call submit_scorecard now with the complete data.`
 
   const jsonData = await callAnthropic(key, {
     model: 'claude-sonnet-4-6',
-    max_tokens: 4096,
+    max_tokens: 8192,
     tools: [SCORECARD_TOOL],
     tool_choice: { type: 'tool', name: 'submit_scorecard' },
     messages: [
@@ -137,9 +141,26 @@ You MUST call the submit_scorecard tool with the data.`
     ],
   })
 
+  console.log('[scorecard-ai] step2 stop_reason:', jsonData.stop_reason)
+
   // Find the tool_use block — Claude is forced to call submit_scorecard
   const toolBlock = (jsonData.content ?? []).find((b: any) => b.type === 'tool_use' && b.name === 'submit_scorecard')
-  if (!toolBlock) throw new Error(`No tool_use block in response: ${JSON.stringify(jsonData.content).slice(0, 300)}`)
+  if (!toolBlock) {
+    throw new Error(`No tool_use block in response: ${JSON.stringify(jsonData.content).slice(0, 500)}`)
+  }
 
-  return toolBlock.input as ScorecardResult
+  const result = toolBlock.input as ScorecardResult
+  console.log('[scorecard-ai] extracted:', JSON.stringify({
+    winner: result.match_winner,
+    confidence: result.confidence,
+    playerCount: result.players?.length ?? 0,
+    stopReason: jsonData.stop_reason,
+  }))
+
+  // Fail loudly if we got an empty result
+  if (!result.players?.length) {
+    throw new Error(`Extraction returned 0 players. stop_reason=${jsonData.stop_reason}, input keys: ${Object.keys(result).join(',')}`)
+  }
+
+  return result
 }
