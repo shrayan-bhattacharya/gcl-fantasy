@@ -13,7 +13,8 @@ export async function runScoringPipeline(
   scorecard: ScorecardResult,
 ): Promise<PipelineResult> {
   const supabase = await createServiceClient()
-  const { match_winner, toss_winner, toss_decision, players } = scorecard
+  const { match_winner, toss_winner, toss_decision } = scorecard
+  const players = Array.isArray(scorecard.players) ? scorecard.players : []
 
   // 1. Update match result
   const matchUpdate: Record<string, unknown> = {}
