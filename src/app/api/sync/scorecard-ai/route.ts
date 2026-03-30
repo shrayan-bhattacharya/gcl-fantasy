@@ -21,7 +21,7 @@ export async function POST(request: Request) {
     let scorecard: ScorecardResult | undefined
     ;({ matchId, scorecard } = await request.json())
     if (!matchId) return NextResponse.json({ error: 'matchId required' }, { status: 400 })
-    if (!scorecard) return NextResponse.json({ error: 'scorecard required — extraction happens client-side' }, { status: 400 })
+    if (!scorecard) return NextResponse.json({ error: 'scorecard required' }, { status: 400 })
 
     const supabase = await createServiceClient()
 
@@ -31,7 +31,7 @@ export async function POST(request: Request) {
         sync_error: 'Low confidence extraction',
       }).eq('id', matchId)
       return NextResponse.json({
-        error: 'Low confidence extraction — check the raw data and retry or enter manually',
+        error: 'Low confidence — check raw data or enter manually via Enter Results',
         confidence: 'low',
         raw: scorecard,
       }, { status: 422 })
