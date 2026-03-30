@@ -67,6 +67,17 @@ html[data-theme="light"] input,
 html[data-theme="light"] select,
 html[data-theme="light"] textarea       { color-scheme: light; color: #1A1A2E; background-color: #FFFFFF; }
 
+/* ─── Matchday hero card ─────────────────────────────────────────── */
+.matchday-hero-bg { background: linear-gradient(135deg, #0a0f1a 0%, #0d1f3c 50%, #0a0f1a 100%); }
+html[data-theme="light"] .matchday-hero-bg { background: linear-gradient(135deg, #eef6ff 0%, #dbeafe 50%, #eef6ff 100%); }
+.matchday-hero-label { color: #00e5ff; }
+html[data-theme="light"] .matchday-hero-label { color: #0066CC; }
+.matchday-hero-text { color: #ffffff; }
+html[data-theme="light"] .matchday-hero-text { color: #1A1A2E; }
+.matchday-hero-muted { color: rgba(255, 255, 255, 0.5); }
+html[data-theme="light"] .matchday-hero-muted { color: #6B7280; }
+html[data-theme="light"] .matchday-hero-border { border-color: rgba(0, 102, 204, 0.2) !important; }
+
 /* ─── Animations ─────────────────────────────────────────────────── */
 @keyframes float {
   0%, 100% { transform: translateY(0px); }

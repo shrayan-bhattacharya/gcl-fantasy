@@ -101,8 +101,7 @@ export function DashboardClient({ profile, rank, upcomingMatches, recentPredicti
           <Link href={`/matches/${todayMatch.id}`}>
             <motion.div
               whileHover={{ scale: 1.01 }}
-              className="relative overflow-hidden rounded-2xl border border-dark-border cursor-pointer"
-              style={{ background: 'linear-gradient(135deg, #0a0f1a 0%, #0d1f3c 50%, #0a0f1a 100%)' }}
+              className="relative overflow-hidden rounded-2xl border border-dark-border matchday-hero-bg matchday-hero-border cursor-pointer"
             >
               {/* Glow blobs */}
               <div className="absolute -top-8 -left-8 w-40 h-40 rounded-full opacity-20 blur-3xl" style={{ backgroundColor: IPL_TEAMS[todayMatch.team_a]?.color ?? '#0066CC' }} />
@@ -110,18 +109,18 @@ export function DashboardClient({ profile, rank, upcomingMatches, recentPredicti
 
               <div className="relative px-5 py-5">
                 <div className="flex items-center justify-between mb-4">
-                  <span className="text-xs font-bold tracking-widest uppercase" style={{ color: '#00e5ff' }}>Matchday {matchday}</span>
-                  <span className="text-xs" style={{ color: 'rgba(255,255,255,0.5)' }}>{formatMatchDate(todayMatch.match_date)}</span>
+                  <span className="text-xs font-bold tracking-widest uppercase matchday-hero-label">Matchday {matchday}</span>
+                  <span className="text-xs matchday-hero-muted">{formatMatchDate(todayMatch.match_date)}</span>
                 </div>
 
                 <div className="flex items-center justify-between gap-4">
                   <div className="flex flex-col items-center gap-2 flex-1">
                     <TeamLogo team={todayMatch.team_a} size="lg" />
-                    <span className="text-sm font-bold" style={{ color: '#ffffff' }}>{todayMatch.team_a}</span>
+                    <span className="text-sm font-bold matchday-hero-text">{todayMatch.team_a}</span>
                   </div>
 
                   <div className="flex flex-col items-center gap-1 shrink-0">
-                    <span className="text-2xl font-black" style={{ fontFamily: 'Outfit, sans-serif', color: '#ffffff' }}>VS</span>
+                    <span className="text-2xl font-black matchday-hero-text" style={{ fontFamily: 'Outfit, sans-serif' }}>VS</span>
                     {todayMatch.status === 'completed' && todayMatch.match_winner ? (
                       <span className="text-xs font-semibold" style={{ color: '#ffd700' }}>{todayMatch.match_winner} won</span>
                     ) : (
@@ -131,7 +130,7 @@ export function DashboardClient({ profile, rank, upcomingMatches, recentPredicti
 
                   <div className="flex flex-col items-center gap-2 flex-1">
                     <TeamLogo team={todayMatch.team_b} size="lg" />
-                    <span className="text-sm font-bold" style={{ color: '#ffffff' }}>{todayMatch.team_b}</span>
+                    <span className="text-sm font-bold matchday-hero-text">{todayMatch.team_b}</span>
                   </div>
                 </div>
 

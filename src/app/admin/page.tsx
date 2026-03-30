@@ -69,7 +69,6 @@ export default async function AdminOverview() {
           <Link href="/admin/matches" className="px-4 py-2 rounded-xl bg-neon-cyan/10 text-neon-cyan border border-neon-cyan/20 text-sm font-medium hover:bg-neon-cyan/20 transition-colors">+ Add Match</Link>
           <Link href="/admin/players" className="px-4 py-2 rounded-xl bg-neon-green/10 text-neon-green border border-neon-green/20 text-sm font-medium hover:bg-neon-green/20 transition-colors">+ Add Player</Link>
           <Link href="/admin/results" className="px-4 py-2 rounded-xl bg-neon-orange/10 text-neon-orange border border-neon-orange/20 text-sm font-medium hover:bg-neon-orange/20 transition-colors">Enter Results</Link>
-          <Link href="/admin/invites" className="px-4 py-2 rounded-xl bg-neon-gold/10 text-neon-gold border border-neon-gold/20 text-sm font-medium hover:bg-neon-gold/20 transition-colors">Generate Invite</Link>
         </div>
       </div>
     </div>
