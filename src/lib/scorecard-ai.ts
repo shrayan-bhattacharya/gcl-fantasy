@@ -22,24 +22,7 @@ export interface ScorecardResult {
   players: PlayerStat[]
 }
 
-export async function extractScorecard(
-  teamA: string,
-  teamB: string,
-  matchDate: string,
-): Promise<ScorecardResult> {
-  const key = process.env.ANTHROPIC_API_KEY
-  if (!key) throw new Error('ANTHROPIC_API_KEY not set')
-
-  const dateStr = new Date(matchDate).toLocaleDateString('en-IN', {
-    day: 'numeric', month: 'long', year: 'numeric',
-  })
-
-  const prompt = `Search for the complete IPL 2026 cricket match scorecard: ${teamA} vs ${teamB} played on ${dateStr}.
-
-Find the batting scorecard, bowling figures, and fielding contributions from ESPNCricinfo, Cricbuzz, or the official IPL website.
-
-Return ONLY a valid JSON object with NO other text before or after it:
-{
+const JSON_SCHEMA = `{
   "match_winner": "MI",
   "toss_winner": "KKR",
   "toss_decision": "bat",
@@ -61,18 +44,9 @@ Return ONLY a valid JSON object with NO other text before or after it:
       "maidens": 0
     }
   ]
-}
+}`
 
-Rules:
-- Include every player who batted, bowled, or fielded
-- Use team abbreviations exactly: MI, KKR, RCB, CSK, DC, SRH, PBKS, RR, LSG, GT
-- Set confidence "high" if you found the actual scorecard table, "medium" if reconstructed from match reports, "low" if uncertain
-- Bowlers who didn't bat: runs=0, balls_faced=0
-- Batters who didn't bowl: wickets=0, overs_bowled=0, economy_rate=0
-- economy_rate should be runs_per_over (e.g. 8.75), not a percentage
-
-You MUST respond with ONLY a valid JSON object. No explanation, no markdown, no text before or after. Start your response with { and end with }. Do not use \`\`\`json or any code fences.`
-
+async function callAnthropic(key: string, body: Record<string, unknown>): Promise<any> {
   const res = await fetch('https://api.anthropic.com/v1/messages', {
     method: 'POST',
     headers: {
@@ -80,40 +54,93 @@ You MUST respond with ONLY a valid JSON object. No explanation, no markdown, no 
       'anthropic-version': '2023-06-01',
       'content-type': 'application/json',
     },
-    body: JSON.stringify({
-      model: 'claude-sonnet-4-6',
-      max_tokens: 4096,
-      tools: [{ type: 'web_search_20250305', name: 'web_search', max_uses: 3 }],
-      messages: [{ role: 'user', content: prompt }],
-    }),
+    body: JSON.stringify(body),
+  })
+  if (!res.ok) {
+    const text = await res.text()
+    throw new Error(`Anthropic API ${res.status}: ${text.slice(0, 200)}`)
+  }
+  return res.json()
+}
+
+export async function extractScorecard(
+  teamA: string,
+  teamB: string,
+  matchDate: string,
+): Promise<ScorecardResult> {
+  const key = process.env.ANTHROPIC_API_KEY
+  if (!key) throw new Error('ANTHROPIC_API_KEY not set')
+
+  const dateStr = new Date(matchDate).toLocaleDateString('en-IN', {
+    day: 'numeric', month: 'long', year: 'numeric',
   })
 
-  if (!res.ok) {
-    const body = await res.text()
-    throw new Error(`Anthropic API ${res.status}: ${body.slice(0, 200)}`)
-  }
+  // ── Step 1: Web search — gather scorecard data (narrative is fine) ──
+  const searchPrompt = `Search for the complete IPL 2026 cricket match scorecard: ${teamA} vs ${teamB} played on ${dateStr}.
 
-  const data = await res.json()
+Find the full batting scorecard (runs, balls, 4s, 6s for every batter), bowling figures (overs, maidens, runs, wickets, economy for every bowler), and fielding (catches, stumpings, run outs) from ESPNCricinfo, Cricbuzz, or the official IPL website.
 
-  // Find the last text block (after all tool uses)
-  const textBlocks = (data.content ?? []).filter((b: any) => b.type === 'text')
-  if (!textBlocks.length) throw new Error('No text response from Claude')
+Also find: match winner, toss winner, toss decision.
 
-  const text = textBlocks[textBlocks.length - 1].text
+Report ALL the numbers you find — every batter and bowler from both teams.`
 
-  // Extract JSON — strip code fences, find the JSON object
-  let cleaned = text
+  const searchData = await callAnthropic(key, {
+    model: 'claude-sonnet-4-6',
+    max_tokens: 4096,
+    tools: [{ type: 'web_search_20250305', name: 'web_search', max_uses: 5 }],
+    messages: [{ role: 'user', content: searchPrompt }],
+  })
+
+  // Collect all text from the search response
+  const textBlocks = (searchData.content ?? []).filter((b: any) => b.type === 'text')
+  if (!textBlocks.length) throw new Error('No text response from web search step')
+  const narrative = textBlocks.map((b: any) => b.text).join('\n')
+
+  // ── Step 2: Convert narrative → structured JSON (no tools, prefilled) ──
+  const extractPrompt = `Convert the following cricket match data into the exact JSON format specified. Include every player from both teams who batted, bowled, or fielded.
+
+MATCH DATA:
+${narrative}
+
+REQUIRED JSON FORMAT:
+${JSON_SCHEMA}
+
+Rules:
+- Include every player who batted, bowled, or fielded
+- Use team abbreviations exactly: MI, KKR, RCB, CSK, DC, SRH, PBKS, RR, LSG, GT
+- Set confidence "high" if actual scorecard numbers were found, "medium" if from match reports, "low" if uncertain
+- Bowlers who didn't bat: runs=0, balls_faced=0
+- Batters who didn't bowl: wickets=0, overs_bowled=0, economy_rate=0
+- economy_rate should be runs_per_over (e.g. 8.75)
+- Output ONLY the JSON object, nothing else`
+
+  const jsonData = await callAnthropic(key, {
+    model: 'claude-sonnet-4-6',
+    max_tokens: 4096,
+    system: 'You are a JSON API. Output ONLY valid JSON. No explanation, no markdown, no code fences. Start with { and end with }.',
+    messages: [
+      { role: 'user', content: extractPrompt },
+      { role: 'assistant', content: '{' },
+    ],
+  })
+
+  const jsonBlocks = (jsonData.content ?? []).filter((b: any) => b.type === 'text')
+  if (!jsonBlocks.length) throw new Error('No text response from extraction step')
+
+  // Prepend the '{' we prefilled, since Claude continues from there
+  const raw = '{' + jsonBlocks.map((b: any) => b.text).join('')
+
+  // Strip any accidental code fences
+  const cleaned = raw
     .replace(/```json\s*/gi, '')
     .replace(/```\s*/g, '')
     .trim()
 
-  // Find the outermost JSON object
   const start = cleaned.indexOf('{')
   const end = cleaned.lastIndexOf('}')
   if (start === -1 || end === -1 || end <= start) {
-    throw new Error(`No JSON found in response: ${text.slice(0, 300)}`)
+    throw new Error(`No JSON found in extraction: ${cleaned.slice(0, 300)}`)
   }
 
-  const raw = cleaned.slice(start, end + 1)
-  return JSON.parse(raw) as ScorecardResult
+  return JSON.parse(cleaned.slice(start, end + 1)) as ScorecardResult
 }
