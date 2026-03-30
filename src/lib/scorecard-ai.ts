@@ -22,29 +22,43 @@ export interface ScorecardResult {
   players: PlayerStat[]
 }
 
-const JSON_SCHEMA = `{
-  "match_winner": "MI",
-  "toss_winner": "KKR",
-  "toss_decision": "bat",
-  "confidence": "high",
-  "players": [
-    {
-      "name": "Rohit Sharma",
-      "team": "MI",
-      "runs": 78,
-      "balls_faced": 38,
-      "fours": 6,
-      "sixes": 6,
-      "wickets": 0,
-      "overs_bowled": 0.0,
-      "economy_rate": 0.0,
-      "catches": 0,
-      "stumpings": 0,
-      "run_outs": 0,
-      "maidens": 0
-    }
-  ]
-}`
+// Tool schema forces Claude to output structured JSON via tool_use
+const SCORECARD_TOOL = {
+  name: 'submit_scorecard',
+  description: 'Submit the extracted cricket match scorecard data.',
+  input_schema: {
+    type: 'object' as const,
+    required: ['match_winner', 'toss_winner', 'toss_decision', 'confidence', 'players'],
+    properties: {
+      match_winner: { type: 'string', description: 'Winning team abbreviation (MI, KKR, RCB, CSK, DC, SRH, PBKS, RR, LSG, GT)' },
+      toss_winner: { type: 'string', description: 'Toss winning team abbreviation' },
+      toss_decision: { type: 'string', enum: ['bat', 'bowl'], description: 'Toss decision' },
+      confidence: { type: 'string', enum: ['high', 'medium', 'low'], description: 'high = actual scorecard found, medium = from match reports, low = uncertain' },
+      players: {
+        type: 'array',
+        items: {
+          type: 'object',
+          required: ['name', 'team', 'runs', 'balls_faced', 'fours', 'sixes', 'wickets', 'overs_bowled', 'economy_rate', 'catches', 'stumpings', 'run_outs', 'maidens'],
+          properties: {
+            name: { type: 'string' },
+            team: { type: 'string' },
+            runs: { type: 'number' },
+            balls_faced: { type: 'number' },
+            fours: { type: 'number' },
+            sixes: { type: 'number' },
+            wickets: { type: 'number' },
+            overs_bowled: { type: 'number' },
+            economy_rate: { type: 'number' },
+            catches: { type: 'number' },
+            stumpings: { type: 'number' },
+            run_outs: { type: 'number' },
+            maidens: { type: 'number' },
+          },
+        },
+      },
+    },
+  },
+}
 
 async function callAnthropic(key: string, body: Record<string, unknown>): Promise<any> {
   const res = await fetch('https://api.anthropic.com/v1/messages', {
@@ -96,55 +110,36 @@ Report ALL the numbers you find — every batter and bowler from both teams.`
   if (!textBlocks.length) throw new Error('No text response from web search step')
   const narrative = textBlocks.map((b: any) => b.text).join('\n')
 
-  // ── Step 2: Convert narrative → structured JSON (no tools, prefilled) ──
-  const extractPrompt = `Convert the following cricket match data into the exact JSON format specified. Include every player from both teams who batted, bowled, or fielded.
+  // ── Step 2: Convert narrative → structured JSON via forced tool_use ──
+  const extractPrompt = `Extract the cricket scorecard from this match data and call the submit_scorecard tool with the results.
+
+Include every player from both teams who batted, bowled, or fielded.
 
 MATCH DATA:
 ${narrative}
 
-REQUIRED JSON FORMAT:
-${JSON_SCHEMA}
-
 Rules:
-- Include every player who batted, bowled, or fielded
 - Use team abbreviations exactly: MI, KKR, RCB, CSK, DC, SRH, PBKS, RR, LSG, GT
 - Set confidence "high" if actual scorecard numbers were found, "medium" if from match reports, "low" if uncertain
 - Bowlers who didn't bat: runs=0, balls_faced=0
 - Batters who didn't bowl: wickets=0, overs_bowled=0, economy_rate=0
 - economy_rate should be runs_per_over (e.g. 8.75)
-- Output ONLY the JSON object, nothing else`
+
+You MUST call the submit_scorecard tool with the data.`
 
   const jsonData = await callAnthropic(key, {
     model: 'claude-sonnet-4-6',
     max_tokens: 4096,
-    system: [
-      'You are a JSON-only API endpoint.',
-      'You MUST output a single valid JSON object and absolutely nothing else.',
-      'No explanations. No markdown. No code fences. No text before or after the JSON.',
-      'Your entire response must start with { and end with }.',
-      'If you output anything other than valid JSON, the system will crash.',
-    ].join(' '),
+    tools: [SCORECARD_TOOL],
+    tool_choice: { type: 'tool', name: 'submit_scorecard' },
     messages: [
       { role: 'user', content: extractPrompt },
     ],
   })
 
-  const jsonBlocks = (jsonData.content ?? []).filter((b: any) => b.type === 'text')
-  if (!jsonBlocks.length) throw new Error('No text response from extraction step')
+  // Find the tool_use block — Claude is forced to call submit_scorecard
+  const toolBlock = (jsonData.content ?? []).find((b: any) => b.type === 'tool_use' && b.name === 'submit_scorecard')
+  if (!toolBlock) throw new Error(`No tool_use block in response: ${JSON.stringify(jsonData.content).slice(0, 300)}`)
 
-  const raw = jsonBlocks.map((b: any) => b.text).join('')
-
-  // Strip any accidental code fences
-  const cleaned = raw
-    .replace(/```json\s*/gi, '')
-    .replace(/```\s*/g, '')
-    .trim()
-
-  const start = cleaned.indexOf('{')
-  const end = cleaned.lastIndexOf('}')
-  if (start === -1 || end === -1 || end <= start) {
-    throw new Error(`No JSON found in extraction: ${cleaned.slice(0, 300)}`)
-  }
-
-  return JSON.parse(cleaned.slice(start, end + 1)) as ScorecardResult
+  return toolBlock.input as ScorecardResult
 }
