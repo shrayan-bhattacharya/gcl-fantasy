@@ -4,12 +4,11 @@ import { motion, useMotionValue, useSpring, useTransform, type Variants } from '
 import { useEffect } from 'react'
 import { PageWrapper, AnimatedSection } from '@/components/layout/PageWrapper'
 import { GettingStarted } from '@/components/ui/GettingStarted'
-import { Card, CardBody } from '@/components/ui/Card'
+import { Card } from '@/components/ui/Card'
 import { StatusBadge } from '@/components/ui/Badge'
 import { TeamLogo } from '@/components/ui/TeamLogo'
 import { IPL_TEAMS, ROLE_COLORS, ROLE_ICONS, ROLE_LABELS } from '@/constants/ipl'
 import { formatMatchDate, ordinal } from '@/lib/utils'
-import { CompactPlayerCard } from '@/components/ui/PlayerCard'
 import Link from 'next/link'
 import { Trophy, Target, Zap, TrendingUp, ArrowRight, Calendar, Lock } from 'lucide-react'
 import type { Database } from '@/types/database.types'
@@ -30,6 +29,7 @@ interface Props {
   isFantasyLocked: boolean
   todayMatch: MatchRow | null
   matchday: number
+  squadPlayerPoints?: Record<string, number>
 }
 
 // Count-up animation component
@@ -60,7 +60,7 @@ const cardVariants: Variants = {
   visible: { opacity: 1, y: 0, transition: { type: 'spring', stiffness: 250, damping: 25 } },
 }
 
-export function DashboardClient({ profile, rank, upcomingMatches, recentPredictions, leaderboardTop, currentUserId, latestFantasyTeam, totalPredictions, totalMatches, isFantasyLocked, todayMatch, matchday }: Props) {
+export function DashboardClient({ profile, rank, upcomingMatches, recentPredictions, leaderboardTop, currentUserId, latestFantasyTeam, totalPredictions, totalMatches, isFantasyLocked, todayMatch, matchday, squadPlayerPoints = {} }: Props) {
 
   const stats = [
     {
@@ -369,23 +369,47 @@ export function DashboardClient({ profile, rank, upcomingMatches, recentPredicti
               <h2 className="text-sm font-bold text-white flex items-center gap-2" style={{ fontFamily: 'Outfit, sans-serif' }}>
                 <Zap className="w-4 h-4 text-neon-cyan" /> Your Squad
               </h2>
-              <Link href="/fantasy" className="text-xs text-neon-blue hover:text-neon-blue/80 flex items-center gap-1 transition-colors">
-                Edit <ArrowRight className="w-3 h-3" />
-              </Link>
+              <div className="flex items-center gap-3">
+                {latestFantasyTeam.total_points != null && (
+                  <span className="text-xs font-bold text-neon-green">{latestFantasyTeam.total_points} pts</span>
+                )}
+                <Link href="/fantasy" className="text-xs text-neon-blue hover:text-neon-blue/80 flex items-center gap-1 transition-colors">
+                  Edit <ArrowRight className="w-3 h-3" />
+                </Link>
+              </div>
             </div>
-            <Card>
-              <CardBody className="space-y-2 p-3">
-                {[
-                  latestFantasyTeam.batsman_1,
-                  latestFantasyTeam.batsman_2,
-                  latestFantasyTeam.bowler_1,
-                  latestFantasyTeam.bowler_2,
-                  latestFantasyTeam.flex,
-                ].filter(Boolean).map((player: any, i: number) => (
-                  <CompactPlayerCard key={i} player={player} showStats />
-                ))}
-              </CardBody>
-            </Card>
+            <div className="space-y-1.5">
+              {[
+                latestFantasyTeam.batsman_1,
+                latestFantasyTeam.batsman_2,
+                latestFantasyTeam.bowler_1,
+                latestFantasyTeam.bowler_2,
+                latestFantasyTeam.flex,
+              ].filter(Boolean).map((player: any, i: number) => {
+                const pts = squadPlayerPoints[player.id]
+                const color = ROLE_COLORS[player.role as keyof typeof ROLE_COLORS] ?? '#8892a4'
+                return (
+                  <div key={i} className="flex items-center gap-3 px-3 py-2.5 rounded-xl border border-dark-border bg-dark-elevated">
+                    <div className="w-7 h-7 rounded-lg flex items-center justify-center text-sm shrink-0" style={{ backgroundColor: color + '18', border: `1px solid ${color}30` }}>
+                      {ROLE_ICONS[player.role as keyof typeof ROLE_ICONS]}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-medium text-white truncate leading-tight">{player.name}</p>
+                      <div className="flex items-center gap-1.5 mt-0.5">
+                        <TeamLogo team={player.team} size="xs" />
+                        <span className="text-[10px] text-dark-muted">{ROLE_LABELS[player.role as keyof typeof ROLE_LABELS]}</span>
+                      </div>
+                    </div>
+                    <div className="shrink-0 text-right min-w-[36px]">
+                      <p className={`text-sm font-bold leading-tight ${pts ? 'text-neon-green' : 'text-dark-muted'}`}>
+                        {pts ? `+${pts}` : '0'}
+                      </p>
+                      <p className="text-[10px] text-dark-muted">pts</p>
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
           </AnimatedSection>
         )}
       </div>
