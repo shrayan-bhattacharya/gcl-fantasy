@@ -101,7 +101,7 @@ Report ALL the numbers you find — every batter and bowler from both teams.`
   const searchData = await callAnthropic(key, {
     model: 'claude-sonnet-4-6',
     max_tokens: 8192,
-    tools: [{ type: 'web_search_20250305', name: 'web_search', max_uses: 5 }],
+    tools: [{ type: 'web_search_20250305', name: 'web_search', max_uses: 3 }],
     messages: [{ role: 'user', content: searchPrompt }],
   })
 
