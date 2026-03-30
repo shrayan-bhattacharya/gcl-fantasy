@@ -39,8 +39,20 @@ export async function GET(request: Request) {
   for (const match of matches) {
     results.processed++
     try {
-      const narrative = await searchScorecard(match.team_a, match.team_b, match.match_date)
-      const scorecard = await extractFromNarrative(narrative)
+      // Resolve target players from fantasy teams for these match teams
+      const { data: fantasyTeams } = await supabase
+        .from('fantasy_teams')
+        .select('batsman_1_id, batsman_2_id, bowler_1_id, bowler_2_id, flex_player_id')
+      const pickedIds = [...new Set(
+        (fantasyTeams ?? []).flatMap((t: any) => [t.batsman_1_id, t.batsman_2_id, t.bowler_1_id, t.bowler_2_id, t.flex_player_id]).filter(Boolean)
+      )]
+      const { data: pickedPlayers } = pickedIds.length
+        ? await supabase.from('ipl_players').select('name, team').in('id', pickedIds).in('team', [match.team_a, match.team_b])
+        : { data: [] }
+      const targetPlayers = (pickedPlayers ?? []).map((p: any) => ({ name: p.name, team: p.team }))
+
+      const narrative = await searchScorecard(match.team_a, match.team_b, match.match_date, targetPlayers)
+      const scorecard = await extractFromNarrative(narrative, targetPlayers)
 
       if (scorecard.confidence === 'low') {
         await supabase.from('matches').update({

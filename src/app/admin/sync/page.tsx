@@ -112,12 +112,24 @@ export default function SyncPage() {
       const match = pendingMatches.find(m => m.id === matchId)
       if (!match) throw new Error('Match not found')
 
+      // Resolve which players to look up — only those picked in fantasy teams for these two match teams
+      const { data: fantasyTeams } = await supabase
+        .from('fantasy_teams')
+        .select('batsman_1_id, batsman_2_id, bowler_1_id, bowler_2_id, flex_player_id')
+      const pickedIds = [...new Set(
+        (fantasyTeams ?? []).flatMap((t: any) => [t.batsman_1_id, t.batsman_2_id, t.bowler_1_id, t.bowler_2_id, t.flex_player_id]).filter(Boolean)
+      )]
+      const { data: pickedPlayers } = pickedIds.length
+        ? await supabase.from('ipl_players').select('name, team').in('id', pickedIds).in('team', [match.team_a, match.team_b])
+        : { data: [] }
+      const targetPlayers = (pickedPlayers ?? []).map((p: any) => ({ name: p.name, team: p.team }))
+
       // Step 1: Web search (server-side, up to 60s)
-      setSyncStatus(prev => ({ ...prev, [matchId]: 'Step 1/3 — Searching web for scorecard...' }))
+      setSyncStatus(prev => ({ ...prev, [matchId]: `Step 1/3 — Searching for ${targetPlayers.length} players...` }))
       const searchRes = await fetch('/api/sync/search-scorecard', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ teamA: match.team_a, teamB: match.team_b, matchDate: match.match_date }),
+        body: JSON.stringify({ teamA: match.team_a, teamB: match.team_b, matchDate: match.match_date, targetPlayers }),
       })
       const searchJson = await searchRes.json()
       if (!searchRes.ok) throw new Error(searchJson.error || 'Search failed')
@@ -127,7 +139,7 @@ export default function SyncPage() {
       const extractRes = await fetch('/api/sync/extract-scorecard', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ narrative: searchJson.narrative }),
+        body: JSON.stringify({ narrative: searchJson.narrative, targetPlayers }),
       })
       const extractJson = await extractRes.json()
       if (!extractRes.ok) throw new Error(extractJson.error || 'Extraction failed')

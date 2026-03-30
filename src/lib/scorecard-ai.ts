@@ -2,51 +2,40 @@ export interface PlayerStat {
   name: string
   team: string
   runs: number
-  balls_faced: number
-  fours: number
-  sixes: number
   wickets: number
-  overs_bowled: number
-  economy_rate: number
-  catches: number
-  stumpings: number
-  run_outs: number
-  maidens: number
 }
 
 export interface ScorecardResult {
   match_winner: string | null
-  toss_winner: string | null
-  toss_decision: 'bat' | 'bowl' | null
   confidence: 'high' | 'medium' | 'low'
   players: PlayerStat[]
 }
 
-// Tool schema forces Claude to output structured JSON via tool_use
+export interface TargetPlayer {
+  name: string
+  team: string
+}
+
+// Tool schema — only runs + wickets needed for scoring
 export const SCORECARD_TOOL = {
   name: 'submit_scorecard',
-  description: 'Submit the extracted cricket match scorecard data.',
+  description: 'Submit the extracted match result and player stats.',
   input_schema: {
     type: 'object' as const,
-    required: ['match_winner', 'toss_winner', 'toss_decision', 'confidence', 'players'],
+    required: ['match_winner', 'confidence', 'players'],
     properties: {
       match_winner: { type: 'string', description: 'Winning team abbreviation (MI, KKR, RCB, CSK, DC, SRH, PBKS, RR, LSG, GT)' },
-      toss_winner: { type: 'string', description: 'Toss winning team abbreviation' },
-      toss_decision: { type: 'string', enum: ['bat', 'bowl'], description: 'Toss decision' },
-      confidence: { type: 'string', enum: ['high', 'medium', 'low'], description: 'high = actual scorecard found, medium = from match reports, low = uncertain' },
+      confidence: { type: 'string', enum: ['high', 'medium', 'low'], description: 'high = found actual scorecard, medium = from match report, low = uncertain' },
       players: {
         type: 'array',
         items: {
           type: 'object',
-          required: ['name', 'team', 'runs', 'balls_faced', 'fours', 'sixes', 'wickets', 'overs_bowled', 'economy_rate', 'catches', 'stumpings', 'run_outs', 'maidens'],
+          required: ['name', 'team', 'runs', 'wickets'],
           properties: {
-            name: { type: 'string' }, team: { type: 'string' },
-            runs: { type: 'number' }, balls_faced: { type: 'number' },
-            fours: { type: 'number' }, sixes: { type: 'number' },
-            wickets: { type: 'number' }, overs_bowled: { type: 'number' },
-            economy_rate: { type: 'number' }, catches: { type: 'number' },
-            stumpings: { type: 'number' }, run_outs: { type: 'number' },
-            maidens: { type: 'number' },
+            name: { type: 'string' },
+            team: { type: 'string' },
+            runs: { type: 'number' },
+            wickets: { type: 'number' },
           },
         },
       },
@@ -77,29 +66,32 @@ async function callAnthropic(key: string, body: Record<string, unknown>) {
   return res.json()
 }
 
-/** Step 1: Web search — returns narrative text about the match */
-export async function searchScorecard(teamA: string, teamB: string, matchDate: string): Promise<string> {
+/** Step 1: Search web for match result + stats for specific players only */
+export async function searchScorecard(
+  teamA: string,
+  teamB: string,
+  matchDate: string,
+  targetPlayers: TargetPlayer[],
+): Promise<string> {
   const key = getKey()
   const dateStr = new Date(matchDate).toLocaleDateString('en-IN', {
     day: 'numeric', month: 'long', year: 'numeric',
   })
+  const playerList = targetPlayers.map(p => `${p.name} (${p.team})`).join(', ')
 
   const data = await callAnthropic(key, {
     model: 'claude-haiku-4-5-20251001',
-    max_tokens: 4096,
+    max_tokens: 2048,
     tools: [{ type: 'web_search_20250305', name: 'web_search', max_uses: 3 }],
     messages: [{
       role: 'user',
-      content: `Search for the complete IPL 2026 cricket match scorecard: ${teamA} vs ${teamB} played on ${dateStr}.
+      content: `Search for the IPL 2026 cricket match: ${teamA} vs ${teamB} on ${dateStr}.
 
-Find from ESPNCricinfo, Cricbuzz, or IPL website:
-- Match result (winner, margin)
-- Toss winner and decision
-- Full batting scorecard: every batter's runs, balls faced, 4s, 6s
-- Full bowling figures: every bowler's overs, maidens, runs, wickets, economy
-- Fielding: catches, stumpings, run outs
+Find:
+1. Which team won the match
+2. Runs scored and wickets taken by ONLY these players: ${playerList}
 
-Report ALL numbers for every player from both teams.`,
+Search ESPNCricinfo or Cricbuzz. Report the match winner and each player's runs and wickets.`,
     }],
   })
 
@@ -110,24 +102,27 @@ Report ALL numbers for every player from both teams.`,
   return narrative
 }
 
-/** Step 2: Extract structured scorecard from narrative text (no web search) */
-export async function extractFromNarrative(narrative: string): Promise<ScorecardResult> {
+/** Step 2: Extract structured stats from narrative for specific players only */
+export async function extractFromNarrative(
+  narrative: string,
+  targetPlayers: TargetPlayer[],
+): Promise<ScorecardResult> {
   const key = getKey()
+  const playerList = targetPlayers.map(p => `${p.name} (${p.team})`).join(', ')
 
   const data = await callAnthropic(key, {
     model: 'claude-sonnet-4-6',
-    max_tokens: 8192,
+    max_tokens: 2048,
     tools: [SCORECARD_TOOL],
     tool_choice: { type: 'tool', name: 'submit_scorecard' },
     messages: [{
       role: 'user',
-      content: `You are given a cricket match report below. Extract ALL player statistics and call submit_scorecard.
+      content: `Extract from this cricket match report and call submit_scorecard.
 
-IMPORTANT: You MUST include every player from BOTH teams. A T20 match has 11 players per side = ~22 players total. For each player include their batting stats (runs, balls faced, 4s, 6s) AND bowling stats (overs, maidens, wickets, economy) AND fielding (catches, stumpings, run outs). If a player only batted, set bowling stats to 0. If they only bowled, set batting stats to 0.
+Find stats for ONLY these players: ${playerList}
 
-Team abbreviations: MI, KKR, RCB, CSK, DC, SRH, PBKS, RR, LSG, GT
-confidence: "high" if you see detailed per-player numbers, "medium" if partial, "low" if very incomplete
-economy_rate = runs per over (e.g. 8.50)
+For each player: runs scored (batting) and wickets taken (bowling). Use 0 if they didn't bat or bowl.
+Set confidence to "high" if you see actual numbers, "medium" if approximate, "low" if not found.
 
 MATCH REPORT:
 ${narrative}`,
@@ -142,8 +137,5 @@ ${narrative}`,
 
   const result = toolBlock.input as ScorecardResult
   console.log('[extract] players:', result.players?.length ?? 0, 'winner:', result.match_winner)
-  if (!result.players?.length) {
-    throw new Error(`Extraction returned 0 players (stop_reason: ${data.stop_reason})`)
-  }
   return result
 }

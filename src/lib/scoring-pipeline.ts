@@ -13,16 +13,12 @@ export async function runScoringPipeline(
   scorecard: ScorecardResult,
 ): Promise<PipelineResult> {
   const supabase = createServiceClient()
-  const { match_winner, toss_winner, toss_decision } = scorecard
+  const { match_winner } = scorecard
   const players = Array.isArray(scorecard.players) ? scorecard.players : []
 
   // 1. Update match result
-  const matchUpdate: Record<string, unknown> = {}
-  if (match_winner) { matchUpdate.match_winner = match_winner; matchUpdate.status = 'completed' }
-  if (toss_winner) matchUpdate.toss_winner = toss_winner
-  if (toss_decision) matchUpdate.toss_decision = toss_decision
-  if (Object.keys(matchUpdate).length) {
-    await supabase.from('matches').update(matchUpdate).eq('id', matchId)
+  if (match_winner) {
+    await supabase.from('matches').update({ match_winner, status: 'completed' }).eq('id', matchId)
   }
 
   // 2. Build name → player UUID map (load all active players once)
@@ -57,14 +53,7 @@ export async function runScoringPipeline(
       player_id: playerId,
       match_id: matchId,
       runs_scored: p.runs ?? 0,
-      balls_faced: p.balls_faced ?? 0,
-      fours: p.fours ?? 0,
-      sixes: p.sixes ?? 0,
       wickets: p.wickets ?? 0,
-      economy_rate: p.economy_rate || null,
-      catches: p.catches ?? 0,
-      stumpings: p.stumpings ?? 0,
-      run_outs: p.run_outs ?? 0,
     })
   }
 

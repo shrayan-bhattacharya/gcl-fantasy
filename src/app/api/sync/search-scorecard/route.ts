@@ -18,12 +18,12 @@ export async function POST(request: Request) {
     const admin = await getAdminUser()
     if (!admin) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
 
-    const { teamA, teamB, matchDate } = await request.json()
+    const { teamA, teamB, matchDate, targetPlayers } = await request.json()
     if (!teamA || !teamB || !matchDate) {
       return NextResponse.json({ error: 'teamA, teamB, matchDate required' }, { status: 400 })
     }
 
-    const narrative = await searchScorecard(teamA, teamB, matchDate)
+    const narrative = await searchScorecard(teamA, teamB, matchDate, targetPlayers ?? [])
     return NextResponse.json({ narrative })
   } catch (err: any) {
     console.error('[search-scorecard] error:', err)
