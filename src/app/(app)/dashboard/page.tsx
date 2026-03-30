@@ -48,6 +48,20 @@ export default async function DashboardPage() {
     .gt('total_score', profile?.total_score ?? 0)
   const rank = (rankCount ?? 0) + 1
 
+  // Per-player fantasy points for the squad section
+  let squadPlayerPoints: Record<string, number> = {}
+  if (fantasyTeam?.id) {
+    const { data: scores } = await supabase
+      .from('fantasy_scores')
+      .select('player_id, total_points')
+      .eq('fantasy_team_id', fantasyTeam.id)
+    if (scores) {
+      for (const s of scores) {
+        squadPlayerPoints[s.player_id] = (squadPlayerPoints[s.player_id] ?? 0) + s.total_points
+      }
+    }
+  }
+
   return (
     <DashboardClient
       profile={profile}
@@ -62,6 +76,7 @@ export default async function DashboardPage() {
       isFantasyLocked={lockSettings?.is_locked ?? false}
       todayMatch={todayMatchArr?.[0] ?? null}
       matchday={matchday ?? 0}
+      squadPlayerPoints={squadPlayerPoints}
     />
   )
 }
