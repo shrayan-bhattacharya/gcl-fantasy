@@ -1,7 +1,7 @@
 'use client'
 
 import { motion, AnimatePresence } from 'framer-motion'
-import { Bell, ChevronDown, Sun, Moon, HelpCircle } from 'lucide-react'
+import { ChevronDown, Sun, Moon, HelpCircle } from 'lucide-react'
 import { cn, getInitials } from '@/lib/utils'
 import { useState } from 'react'
 import { useTheme } from './ThemeProvider'
@@ -15,7 +15,6 @@ interface TopBarProps {
 }
 
 export function TopBar({ displayName, email, totalScore = 0, rank }: TopBarProps) {
-  const [hasNotif] = useState(true)
   const [showDropdown, setShowDropdown] = useState(false)
   const { theme, toggle } = useTheme()
   const initials = getInitials(displayName ?? email ?? null)
@@ -110,23 +109,6 @@ export function TopBar({ displayName, email, totalScore = 0, rank }: TopBarProps
           title="How to play"
         >
           <HelpCircle className="w-4 h-4 text-dark-muted" />
-        </motion.button>
-
-        {/* Notification bell */}
-        <motion.button
-          whileHover={{ scale: 1.1 }}
-          whileTap={{ scale: 0.9 }}
-          className="relative p-2 rounded-lg hover:bg-dark-elevated transition-colors"
-        >
-          <motion.div
-            animate={hasNotif ? { y: [0, -2, 0, -2, 0] } : {}}
-            transition={{ duration: 0.5, delay: 1, repeat: Infinity, repeatDelay: 5 }}
-          >
-            <Bell className="w-4 h-4 text-dark-muted" />
-          </motion.div>
-          {hasNotif && (
-            <span className="absolute top-1.5 right-1.5 w-2 h-2 rounded-full bg-neon-orange border border-dark-base" />
-          )}
         </motion.button>
 
         {/* Avatar + dropdown */}

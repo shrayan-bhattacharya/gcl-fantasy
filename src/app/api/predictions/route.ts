@@ -22,7 +22,7 @@ export async function POST(request: Request) {
     .single()
 
   if (!window?.is_open) {
-    return NextResponse.json({ error: 'Predictions are closed this week' }, { status: 403 })
+    return NextResponse.json({ error: 'Predictions are closed today' }, { status: 403 })
   }
 
   // Check 2: has this individual match's deadline passed?

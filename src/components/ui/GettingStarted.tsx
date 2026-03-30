@@ -213,7 +213,7 @@ export function GettingStarted({ totalPredictions, totalMatches, hasFantasyTeam 
                       emoji="🏏"
                       title="Predict & Win"
                       bullets={[
-                        'Predictions open weekly — admin announces when they\'re live',
+                        'Predictions open daily — admin announces when they\'re live',
                         '50 points for every correct match winner',
                         'Each match locks 1 hour before start time',
                       ]}

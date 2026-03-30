@@ -59,7 +59,7 @@ const MatchCard = memo(function MatchCard({
   const isLocked = !predWindowOpen || dayIsLocked || matchDeadlinePassed || match.status === 'completed'
   const hasSaved = !!confirmedWinner
   const lockReason = !predWindowOpen
-    ? 'Predictions are closed this week'
+    ? 'Predictions are closed today'
     : matchDeadlinePassed
       ? 'Match locked'
       : 'Predictions locked for this match'
@@ -428,7 +428,7 @@ export function MatchesClient({ matches, userPredictions, userId, predictionWind
         <AnimatedSection className="mb-5">
           <div className="flex items-center gap-3 px-4 py-3 rounded-xl bg-dark-elevated border border-dark-border text-sm text-dark-muted">
             <AlertCircle className="w-4 h-4 text-neon-orange shrink-0" />
-            <span>Predictions closed — check back next week when admin opens the window.</span>
+            <span>Predictions closed — check back when admin opens the window for the day.</span>
           </div>
         </AnimatedSection>
       )}

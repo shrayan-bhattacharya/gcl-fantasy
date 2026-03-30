@@ -98,7 +98,7 @@ export function PredictionWindowControl({ initialOpen }: Props) {
       <p className="text-xs text-dark-muted mt-3">
         {isOpen
           ? 'Predictions are open. Users can submit picks until each match\'s deadline (set per match).'
-          : 'Predictions are closed. Users will see a "Check back next week" banner.'
+          : 'Predictions are closed. Users will see a "Check back when admin opens the window" banner.'
         }
       </p>
     </div>
