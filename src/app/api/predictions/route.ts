@@ -43,7 +43,7 @@ export async function POST(request: Request) {
   }
 
   // Both checks passed — upsert via service client
-  const service = await createServiceClient()
+  const service = createServiceClient()
   const { error } = await service.from('predictions').upsert({
     user_id: user.id,
     match_id: matchId,

@@ -13,7 +13,7 @@ export async function POST(request: Request) {
     const { stats, matchWinner, tossWinner, tossDecision } = await fetchScorecard(String(cricapiMatchId))
     if (!stats.length) return NextResponse.json({ error: 'No scorecard data from CricAPI' }, { status: 502 })
 
-    const supabase = await createServiceClient()
+    const supabase = createServiceClient()
 
     // Update match result fields if we got them from the scorecard
     if (matchWinner || tossWinner) {

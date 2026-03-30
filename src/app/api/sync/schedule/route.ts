@@ -7,7 +7,7 @@ export async function POST() {
     const matches = await fetchIPLSchedule()
     if (!matches.length) return NextResponse.json({ error: 'No matches returned from CricAPI' }, { status: 502 })
 
-    const supabase = await createServiceClient()
+    const supabase = createServiceClient()
 
     const rows = matches.map(m => {
       const matchDate = new Date(m.matchDate)

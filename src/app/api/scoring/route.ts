@@ -13,7 +13,7 @@ export async function POST(request: Request) {
   const { matchId } = await request.json()
   if (!matchId) return NextResponse.json({ error: 'matchId required' }, { status: 400 })
 
-  const supabase = await createServiceClient()
+  const supabase = createServiceClient()
 
   // Look up the match
   const { data: match, error: matchErr } = await supabase
