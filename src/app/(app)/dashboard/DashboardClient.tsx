@@ -27,6 +27,7 @@ interface Props {
   totalPredictions: number
   totalMatches: number
   isFantasyLocked: boolean
+  predictionWindowOpen: boolean
   todayMatch: MatchRow | null
   matchday: number
   squadPlayerPoints?: Record<string, number>
@@ -60,7 +61,7 @@ const cardVariants: Variants = {
   visible: { opacity: 1, y: 0, transition: { type: 'spring', stiffness: 250, damping: 25 } },
 }
 
-export function DashboardClient({ profile, rank, upcomingMatches, recentPredictions, leaderboardTop, currentUserId, latestFantasyTeam, totalPredictions, totalMatches, isFantasyLocked, todayMatch, matchday, squadPlayerPoints = {} }: Props) {
+export function DashboardClient({ profile, rank, upcomingMatches, recentPredictions, leaderboardTop, currentUserId, latestFantasyTeam, totalPredictions, totalMatches, isFantasyLocked, predictionWindowOpen, todayMatch, matchday, squadPlayerPoints = {} }: Props) {
 
   const stats = [
     {
@@ -136,9 +137,15 @@ export function DashboardClient({ profile, rank, upcomingMatches, recentPredicti
 
                 {todayMatch.status === 'upcoming' && (
                   <div className="mt-4 flex justify-center">
-                    <span className="text-xs font-bold px-4 py-1.5 rounded-full" style={{ background: 'rgba(57,255,20,0.1)', border: '1px solid rgba(57,255,20,0.3)', color: '#39ff14' }}>
-                      Predict now →
-                    </span>
+                    {predictionWindowOpen ? (
+                      <span className="text-xs font-bold px-4 py-1.5 rounded-full" style={{ background: 'rgba(57,255,20,0.1)', border: '1px solid rgba(57,255,20,0.3)', color: '#39ff14' }}>
+                        Predict now →
+                      </span>
+                    ) : (
+                      <span className="flex items-center gap-1.5 text-xs font-bold px-4 py-1.5 rounded-full" style={{ background: 'rgba(255,107,26,0.1)', border: '1px solid rgba(255,107,26,0.3)', color: '#ff6b1a' }}>
+                        <Lock className="w-3 h-3" /> Predictions closed
+                      </span>
+                    )}
                   </div>
                 )}
               </div>

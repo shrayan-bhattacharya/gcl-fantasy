@@ -12,6 +12,12 @@ export default async function DashboardPage() {
     .limit(1)
     .single()
 
+  const { data: predWindow } = await supabase
+    .from('prediction_window')
+    .select('is_open')
+    .limit(1)
+    .single()
+
   const phase = lockSettings?.phase ?? 'league'
 
   const todayStart = new Date()
@@ -74,6 +80,7 @@ export default async function DashboardPage() {
       totalPredictions={totalPredictions ?? 0}
       totalMatches={totalMatches ?? 0}
       isFantasyLocked={lockSettings?.is_locked ?? false}
+      predictionWindowOpen={predWindow?.is_open ?? true}
       todayMatch={todayMatchArr?.[0] ?? null}
       matchday={matchday ?? 0}
       squadPlayerPoints={squadPlayerPoints}
