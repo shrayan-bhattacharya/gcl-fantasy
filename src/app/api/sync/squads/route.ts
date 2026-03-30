@@ -24,7 +24,7 @@ function dedupeByName(raw: CricAPIPlayerRow[]): { players: CricAPIPlayerRow[]; d
 }
 
 async function upsertPlayers(players: CricAPIPlayerRow[]) {
-  const supabase = await createServiceClient()
+  const supabase = createServiceClient()
   const rows = players.map(p => ({
     cricapi_player_id: p.cricapiPlayerId,
     name: p.name,
@@ -47,7 +47,7 @@ export async function POST(request: Request) {
     const team: string | undefined = body.team
     const reset: boolean = body.reset === true
 
-    const supabase = await createServiceClient()
+    const supabase = createServiceClient()
 
     if (reset) {
       // Full reset: wipe ipl_players cascade then re-sync all squads

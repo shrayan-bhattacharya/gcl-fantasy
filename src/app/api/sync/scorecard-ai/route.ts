@@ -23,7 +23,7 @@ export async function POST(request: Request) {
     if (!matchId) return NextResponse.json({ error: 'matchId required' }, { status: 400 })
     if (!scorecard) return NextResponse.json({ error: 'scorecard required' }, { status: 400 })
 
-    const supabase = await createServiceClient()
+    const supabase = createServiceClient()
 
     if (scorecard.confidence === 'low') {
       await supabase.from('matches').update({
@@ -55,7 +55,7 @@ export async function POST(request: Request) {
 
     if (matchId) {
       try {
-        const supabase = await createServiceClient()
+        const supabase = createServiceClient()
         await supabase.from('matches').update({
           sync_status: 'failed',
           sync_error: err.message?.slice(0, 500),

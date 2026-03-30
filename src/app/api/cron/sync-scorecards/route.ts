@@ -13,7 +13,7 @@ export async function GET(request: Request) {
     }
   }
 
-  const supabase = await createServiceClient()
+  const supabase = createServiceClient()
 
   // Find matches that ended 5+ hours ago and haven't been successfully synced
   const fiveHoursAgo = new Date(Date.now() - 5 * 60 * 60 * 1000).toISOString()

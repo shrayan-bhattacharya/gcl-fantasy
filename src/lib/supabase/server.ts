@@ -1,4 +1,5 @@
 import { createServerClient } from '@supabase/ssr'
+import { createClient as createSupabaseClient } from '@supabase/supabase-js'
 import { cookies } from 'next/headers'
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -27,18 +28,13 @@ export async function createClient(): Promise<any> {
   )
 }
 
+// Service client uses supabase-js directly (no cookie session) so the
+// service role key goes in the Authorization header — bypasses RLS for all users.
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-export async function createServiceClient(): Promise<any> {
-  const cookieStore = await cookies()
-
-  return createServerClient(
+export function createServiceClient(): any {
+  return createSupabaseClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.SUPABASE_SERVICE_ROLE_KEY!,
-    {
-      cookies: {
-        getAll() { return cookieStore.getAll() },
-        setAll() {},
-      },
-    }
+    { auth: { autoRefreshToken: false, persistSession: false } }
   )
 }
