@@ -18,12 +18,12 @@ export async function POST(request: Request) {
     const admin = await getAdminUser()
     if (!admin) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
 
-    const { narrative } = await request.json()
+    const { narrative, targetPlayers } = await request.json()
     if (!narrative) {
       return NextResponse.json({ error: 'narrative required' }, { status: 400 })
     }
 
-    const scorecard = await extractFromNarrative(narrative)
+    const scorecard = await extractFromNarrative(narrative, targetPlayers ?? [])
     return NextResponse.json({ scorecard })
   } catch (err: any) {
     console.error('[extract-scorecard] error:', err)
