@@ -1,8 +1,2 @@
 {
-  "crons": [
-    {
-      "path": "/api/cron/sync-scorecards",
-      "schedule": "0 * * * *"
-    }
-  ]
 }
