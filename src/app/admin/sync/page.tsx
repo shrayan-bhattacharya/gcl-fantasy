@@ -85,22 +85,12 @@ export default function SyncPage() {
 
   async function loadPending() {
     const fiveHoursAgo = new Date(Date.now() - 5 * 60 * 60 * 1000).toISOString()
-    const [{ data: overdue }, { data: failed }] = await Promise.all([
-      supabase
-        .from('matches')
-        .select('id, team_a, team_b, match_date, status, sync_status, sync_error')
-        .lt('match_date', fiveHoursAgo)
-        .neq('status', 'completed')
-        .order('match_date', { ascending: false }),
-      supabase
-        .from('matches')
-        .select('id, team_a, team_b, match_date, status, sync_status, sync_error')
-        .eq('sync_status', 'failed')
-        .order('match_date', { ascending: false }),
-    ])
-    const combined = [...(overdue ?? []), ...(failed ?? [])]
-    const unique = combined.filter((m, i, arr) => arr.findIndex(x => x.id === m.id) === i)
-    setPendingMatches(unique)
+    const { data } = await supabase
+      .from('matches')
+      .select('id, team_a, team_b, match_date, status, sync_status, sync_error')
+      .lt('match_date', fiveHoursAgo)
+      .order('match_date', { ascending: false })
+    setPendingMatches(data ?? [])
   }
 
   async function retrySync(matchId: string) {
@@ -246,18 +236,24 @@ export default function SyncPage() {
         {pendingMatches.length === 0 ? (
           <div className="flex items-center gap-2 text-sm text-neon-green px-3 py-2 rounded-lg bg-neon-green/10 border border-neon-green/20">
             <CheckCircle className="w-4 h-4 shrink-0" />
-            All completed matches have been synced
+            No past matches yet
           </div>
         ) : (
           <div className="space-y-3">
             {pendingMatches.map(match => (
               <div key={match.id} className="border border-dark-border rounded-xl p-4 space-y-2">
                 <div className="flex items-center justify-between gap-3 flex-wrap">
-                  <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-2 flex-wrap">
                     <span className="text-sm font-semibold text-white">{match.team_a} vs {match.team_b}</span>
                     <span className="text-xs text-dark-muted">{new Date(match.match_date).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })}</span>
+                    {match.sync_status === 'synced' && (
+                      <span className="text-xs px-2 py-0.5 rounded-md bg-neon-green/10 text-neon-green border border-neon-green/20">synced</span>
+                    )}
                     {match.sync_status === 'failed' && (
                       <span className="text-xs px-2 py-0.5 rounded-md bg-red-500/10 text-red-400 border border-red-500/20">failed</span>
+                    )}
+                    {match.status === 'completed' && !match.sync_status && (
+                      <span className="text-xs px-2 py-0.5 rounded-md bg-dark-elevated text-dark-muted border border-dark-border">manual</span>
                     )}
                   </div>
                   <button
