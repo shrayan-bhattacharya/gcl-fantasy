@@ -12,150 +12,6 @@ interface SyncResult {
   raw?: any
 }
 
-// ── Tool schema for structured extraction (same as scorecard-ai.ts) ──
-const SCORECARD_TOOL = {
-  name: 'submit_scorecard',
-  description: 'Submit the extracted cricket match scorecard data. Call this after searching for the scorecard.',
-  input_schema: {
-    type: 'object',
-    required: ['match_winner', 'toss_winner', 'toss_decision', 'confidence', 'players'],
-    properties: {
-      match_winner: { type: 'string', description: 'Winning team abbreviation (MI, KKR, RCB, CSK, DC, SRH, PBKS, RR, LSG, GT)' },
-      toss_winner: { type: 'string', description: 'Toss winning team abbreviation' },
-      toss_decision: { type: 'string', enum: ['bat', 'bowl'], description: 'Toss decision' },
-      confidence: { type: 'string', enum: ['high', 'medium', 'low'], description: 'high = actual scorecard found, medium = from match reports, low = uncertain' },
-      players: {
-        type: 'array',
-        items: {
-          type: 'object',
-          required: ['name', 'team', 'runs', 'balls_faced', 'fours', 'sixes', 'wickets', 'overs_bowled', 'economy_rate', 'catches', 'stumpings', 'run_outs', 'maidens'],
-          properties: {
-            name: { type: 'string' }, team: { type: 'string' },
-            runs: { type: 'number' }, balls_faced: { type: 'number' },
-            fours: { type: 'number' }, sixes: { type: 'number' },
-            wickets: { type: 'number' }, overs_bowled: { type: 'number' },
-            economy_rate: { type: 'number' }, catches: { type: 'number' },
-            stumpings: { type: 'number' }, run_outs: { type: 'number' },
-            maidens: { type: 'number' },
-          },
-        },
-      },
-    },
-  },
-}
-
-/** Call Anthropic API from the browser — no Vercel timeout */
-async function clientExtractScorecard(
-  teamA: string,
-  teamB: string,
-  matchDate: string,
-  onStatus: (status: string) => void,
-) {
-  const key = process.env.NEXT_PUBLIC_ANTHROPIC_API_KEY
-  if (!key) throw new Error('NEXT_PUBLIC_ANTHROPIC_API_KEY not set')
-
-  const dateStr = new Date(matchDate).toLocaleDateString('en-IN', {
-    day: 'numeric', month: 'long', year: 'numeric',
-  })
-
-  onStatus('Searching web for scorecard...')
-
-  const res = await fetch('https://api.anthropic.com/v1/messages', {
-    method: 'POST',
-    headers: {
-      'x-api-key': key,
-      'anthropic-version': '2023-06-01',
-      'content-type': 'application/json',
-    },
-    body: JSON.stringify({
-      model: 'claude-sonnet-4-6',
-      max_tokens: 8192,
-      tools: [
-        { type: 'web_search_20250305', name: 'web_search', max_uses: 5 },
-        SCORECARD_TOOL,
-      ],
-      messages: [{
-        role: 'user',
-        content: `Search for the complete IPL 2026 cricket match scorecard: ${teamA} vs ${teamB} played on ${dateStr}.
-
-Find the full batting scorecard, bowling figures, and fielding from ESPNCricinfo, Cricbuzz, or the IPL website.
-
-After searching, you MUST call the submit_scorecard tool with ALL the data:
-- match_winner, toss_winner, toss_decision
-- Every player from both teams (~22 players) who batted, bowled, or fielded
-- Team abbreviations: MI, KKR, RCB, CSK, DC, SRH, PBKS, RR, LSG, GT
-- confidence: "high" if actual scorecard found, "medium" if from match reports, "low" if uncertain
-- Bowlers who didn't bat: runs=0, balls_faced=0
-- Batters who didn't bowl: wickets=0, overs_bowled=0, economy_rate=0
-- economy_rate = runs per over (e.g. 8.75)
-- Include ALL players from both teams`,
-      }],
-    }),
-  })
-
-  if (!res.ok) {
-    const body = await res.text()
-    throw new Error(`Anthropic API ${res.status}: ${body.slice(0, 300)}`)
-  }
-
-  const data = await res.json()
-
-  // Look for submit_scorecard tool_use in response
-  const toolBlock = (data.content ?? []).find(
-    (b: any) => b.type === 'tool_use' && b.name === 'submit_scorecard'
-  )
-
-  if (toolBlock) {
-    const result = toolBlock.input
-    if (!result.players?.length) {
-      throw new Error(`Extraction returned 0 players (stop_reason: ${data.stop_reason})`)
-    }
-    return result
-  }
-
-  // Fallback: Claude responded with text, not a tool call — make a second call with forced tool_choice
-  onStatus('Extracting structured data...')
-  const textBlocks = (data.content ?? []).filter((b: any) => b.type === 'text')
-  const narrative = textBlocks.map((b: any) => b.text).join('\n')
-  if (!narrative) throw new Error('No text and no tool_use in response')
-
-  const res2 = await fetch('https://api.anthropic.com/v1/messages', {
-    method: 'POST',
-    headers: {
-      'x-api-key': key,
-      'anthropic-version': '2023-06-01',
-      'content-type': 'application/json',
-    },
-    body: JSON.stringify({
-      model: 'claude-sonnet-4-6',
-      max_tokens: 8192,
-      tools: [SCORECARD_TOOL],
-      tool_choice: { type: 'tool', name: 'submit_scorecard' },
-      messages: [{
-        role: 'user',
-        content: `Extract ALL player data from this cricket match report and call submit_scorecard. Include ~22 players (11 per team). Team abbreviations: MI, KKR, RCB, CSK, DC, SRH, PBKS, RR, LSG, GT.\n\n${narrative}`,
-      }],
-    }),
-  })
-
-  if (!res2.ok) {
-    const body = await res2.text()
-    throw new Error(`Anthropic API step2 ${res2.status}: ${body.slice(0, 300)}`)
-  }
-
-  const data2 = await res2.json()
-  const toolBlock2 = (data2.content ?? []).find(
-    (b: any) => b.type === 'tool_use' && b.name === 'submit_scorecard'
-  )
-  if (!toolBlock2) throw new Error('Failed to extract structured scorecard data')
-
-  const result = toolBlock2.input
-  if (!result.players?.length) {
-    throw new Error(`Extraction returned 0 players in step 2`)
-  }
-  return result
-}
-
 function ResultBadge({ result }: { result: SyncResult }) {
   return (
     <AnimatePresence>
@@ -210,17 +66,14 @@ function SyncCard({ icon: Icon, title, description, children }: {
 export default function SyncPage() {
   const supabase = createClient()
 
-  // Full reset
   const [resetLoading, setResetLoading] = useState(false)
   const [resetResult, setResetResult] = useState<SyncResult | null>(null)
   const [resetConfirm, setResetConfirm] = useState(false)
 
-  // Squad sync
   const [squadLoading, setSquadLoading] = useState(false)
   const [squadResult, setSquadResult] = useState<SyncResult | null>(null)
   const [squadTeam, setSquadTeam] = useState('all')
 
-  // Pending scorecard sync
   const [pendingMatches, setPendingMatches] = useState<any[]>([])
   const [retryResults, setRetryResults] = useState<Record<string, SyncResult | null>>({})
   const [retrying, setRetrying] = useState<Record<string, boolean>>({})
@@ -256,41 +109,51 @@ export default function SyncPage() {
     setSyncStatus(prev => ({ ...prev, [matchId]: '' }))
 
     try {
-      // Find match info for the extraction prompt
       const match = pendingMatches.find(m => m.id === matchId)
-      if (!match) throw new Error('Match not found in pending list')
+      if (!match) throw new Error('Match not found')
 
-      // Step 1: Extract scorecard in the browser (no timeout)
-      const scorecard = await clientExtractScorecard(
-        match.team_a,
-        match.team_b,
-        match.match_date,
-        (status) => setSyncStatus(prev => ({ ...prev, [matchId]: status })),
-      )
-
-      // Step 2: Send scorecard to server for scoring pipeline (fast)
-      setSyncStatus(prev => ({ ...prev, [matchId]: 'Running scoring pipeline...' }))
-      const res = await fetch('/api/sync/scorecard-ai', {
+      // Step 1: Web search (server-side, up to 60s)
+      setSyncStatus(prev => ({ ...prev, [matchId]: 'Step 1/3 — Searching web for scorecard...' }))
+      const searchRes = await fetch('/api/sync/search-scorecard', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ matchId, scorecard }),
+        body: JSON.stringify({ teamA: match.team_a, teamB: match.team_b, matchDate: match.match_date }),
       })
-      const json = await res.json()
+      const searchJson = await searchRes.json()
+      if (!searchRes.ok) throw new Error(searchJson.error || 'Search failed')
 
-      if (!res.ok) {
-        setRetryResults(prev => ({ ...prev, [matchId]: { ok: false, message: 'Scoring failed', detail: json.error, raw: json } }))
+      // Step 2: Extract structured data (server-side, up to 60s)
+      setSyncStatus(prev => ({ ...prev, [matchId]: 'Step 2/3 — Extracting player stats...' }))
+      const extractRes = await fetch('/api/sync/extract-scorecard', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ narrative: searchJson.narrative }),
+      })
+      const extractJson = await extractRes.json()
+      if (!extractRes.ok) throw new Error(extractJson.error || 'Extraction failed')
+
+      // Step 3: Run scoring pipeline (server-side, fast)
+      setSyncStatus(prev => ({ ...prev, [matchId]: 'Step 3/3 — Scoring fantasy teams...' }))
+      const scoreRes = await fetch('/api/sync/scorecard-ai', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ matchId, scorecard: extractJson.scorecard }),
+      })
+      const scoreJson = await scoreRes.json()
+      if (!scoreRes.ok) {
+        setRetryResults(prev => ({ ...prev, [matchId]: { ok: false, message: 'Scoring failed', detail: scoreJson.error, raw: scoreJson } }))
       } else {
-        const unmatchedNote = json.unmatched?.length ? `${json.unmatched.length} unmatched: ${json.unmatched.join(', ')}` : undefined
+        const unmatchedNote = scoreJson.unmatched?.length ? `${scoreJson.unmatched.length} unmatched: ${scoreJson.unmatched.join(', ')}` : undefined
         setRetryResults(prev => ({ ...prev, [matchId]: {
           ok: true,
-          message: `Synced — ${json.statsUpserted} players · ${json.fantasyTeamsScored} teams scored`,
+          message: `Synced — ${scoreJson.statsUpserted} players · ${scoreJson.fantasyTeamsScored} teams scored`,
           detail: unmatchedNote,
-          raw: json,
+          raw: scoreJson,
         }}))
         loadPending()
       }
     } catch (e: any) {
-      setRetryResults(prev => ({ ...prev, [matchId]: { ok: false, message: 'Extraction failed', detail: e.message } }))
+      setRetryResults(prev => ({ ...prev, [matchId]: { ok: false, message: 'Sync failed', detail: e.message } }))
     }
     setRetrying(prev => ({ ...prev, [matchId]: false }))
     setSyncStatus(prev => ({ ...prev, [matchId]: '' }))
@@ -357,7 +220,7 @@ export default function SyncPage() {
           <div className="flex-1">
             <h3 className="text-white font-bold" style={{ fontFamily: 'Outfit, sans-serif' }}>Scorecard Sync</h3>
             <p className="text-dark-muted text-sm mt-0.5">
-              Uses Claude AI to search the web for scorecards. Runs in your browser — may take 1-2 minutes.
+              Uses AI to search the web for scorecards. 3-step process — may take 1-2 minutes total.
             </p>
           </div>
           <button
@@ -405,7 +268,7 @@ export default function SyncPage() {
         )}
       </motion.div>
 
-      {/* Squads — emergency use */}
+      {/* Squads */}
       <SyncCard icon={Users} title="Sync Player Squads" description="Re-imports player rosters. Only needed if a player is missing from the DB — squads are already loaded.">
         <div className="flex gap-3 flex-wrap">
           <select
@@ -430,7 +293,7 @@ export default function SyncPage() {
         {squadResult && <ResultBadge result={squadResult} />}
       </SyncCard>
 
-      {/* Full Reset — danger zone */}
+      {/* Full Reset */}
       <motion.div
         initial={{ opacity: 0, y: 16 }}
         animate={{ opacity: 1, y: 0 }}
@@ -473,16 +336,13 @@ export default function SyncPage() {
 
       {/* Help */}
       <div className="glass border border-dark-border/50 rounded-2xl p-5 text-sm text-dark-muted space-y-2">
-        <p className="text-white font-semibold text-sm">Setup checklist</p>
+        <p className="text-white font-semibold text-sm">How it works</p>
         <ol className="list-decimal list-inside space-y-1 text-xs">
-          <li>Run <code className="text-neon-green">migration_sync_status.sql</code> in Supabase SQL Editor</li>
-          <li>Add <code className="text-neon-green">NEXT_PUBLIC_ANTHROPIC_API_KEY</code> to Vercel env vars</li>
-          <li>Click <strong className="text-white">Sync Now</strong> on any pending match — runs in your browser (1-2 min)</li>
+          <li><strong className="text-white">Step 1</strong> — AI searches the web for the match scorecard (~30s)</li>
+          <li><strong className="text-white">Step 2</strong> — Extracts structured player stats from search results (~15s)</li>
+          <li><strong className="text-white">Step 3</strong> — Updates match result, player stats, fantasy scores, predictions (~5s)</li>
           <li>If stats are wrong: <strong className="text-white">Enter Results</strong> → expand match → edit any field → save</li>
-          <li>If a player is missing: <strong className="text-white">Sync Player Squads</strong> to re-import from the roster</li>
-          <li>Player data fully broken: <strong className="text-red-400">Full Reset + Resync</strong> (last resort)</li>
         </ol>
-        <p className="text-xs pt-1">Scorecard data: Claude AI web search · runs client-side in your browser</p>
       </div>
     </div>
   )

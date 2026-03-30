@@ -23,9 +23,9 @@ export interface ScorecardResult {
 }
 
 // Tool schema forces Claude to output structured JSON via tool_use
-const SCORECARD_TOOL = {
+export const SCORECARD_TOOL = {
   name: 'submit_scorecard',
-  description: 'Submit the extracted cricket match scorecard data. Call this after searching for the scorecard.',
+  description: 'Submit the extracted cricket match scorecard data.',
   input_schema: {
     type: 'object' as const,
     required: ['match_winner', 'toss_winner', 'toss_decision', 'confidence', 'players'],
@@ -40,18 +40,12 @@ const SCORECARD_TOOL = {
           type: 'object',
           required: ['name', 'team', 'runs', 'balls_faced', 'fours', 'sixes', 'wickets', 'overs_bowled', 'economy_rate', 'catches', 'stumpings', 'run_outs', 'maidens'],
           properties: {
-            name: { type: 'string' },
-            team: { type: 'string' },
-            runs: { type: 'number' },
-            balls_faced: { type: 'number' },
-            fours: { type: 'number' },
-            sixes: { type: 'number' },
-            wickets: { type: 'number' },
-            overs_bowled: { type: 'number' },
-            economy_rate: { type: 'number' },
-            catches: { type: 'number' },
-            stumpings: { type: 'number' },
-            run_outs: { type: 'number' },
+            name: { type: 'string' }, team: { type: 'string' },
+            runs: { type: 'number' }, balls_faced: { type: 'number' },
+            fours: { type: 'number' }, sixes: { type: 'number' },
+            wickets: { type: 'number' }, overs_bowled: { type: 'number' },
+            economy_rate: { type: 'number' }, catches: { type: 'number' },
+            stumpings: { type: 'number' }, run_outs: { type: 'number' },
             maidens: { type: 'number' },
           },
         },
@@ -60,32 +54,13 @@ const SCORECARD_TOOL = {
   },
 }
 
-export async function extractScorecard(
-  teamA: string,
-  teamB: string,
-  matchDate: string,
-): Promise<ScorecardResult> {
+function getKey() {
   const key = process.env.ANTHROPIC_API_KEY
   if (!key) throw new Error('ANTHROPIC_API_KEY not set')
+  return key
+}
 
-  const dateStr = new Date(matchDate).toLocaleDateString('en-IN', {
-    day: 'numeric', month: 'long', year: 'numeric',
-  })
-
-  // Single API call: web_search finds data, then Claude calls submit_scorecard
-  const prompt = `Search for the complete IPL 2026 cricket match scorecard: ${teamA} vs ${teamB} played on ${dateStr}.
-
-Find the full batting scorecard, bowling figures, and fielding from ESPNCricinfo, Cricbuzz, or the IPL website.
-
-After searching, you MUST call the submit_scorecard tool with ALL the data:
-- match_winner, toss_winner, toss_decision
-- Every player from both teams (~22 players) who batted, bowled, or fielded
-- Team abbreviations: MI, KKR, RCB, CSK, DC, SRH, PBKS, RR, LSG, GT
-- confidence: "high" if actual scorecard found, "medium" if from match reports, "low" if uncertain
-- Bowlers who didn't bat: runs=0, balls_faced=0
-- Batters who didn't bowl: wickets=0, overs_bowled=0, economy_rate=0
-- economy_rate = runs per over (e.g. 8.75)`
-
+async function callAnthropic(key: string, body: Record<string, unknown>) {
   const res = await fetch('https://api.anthropic.com/v1/messages', {
     method: 'POST',
     headers: {
@@ -93,88 +68,84 @@ After searching, you MUST call the submit_scorecard tool with ALL the data:
       'anthropic-version': '2023-06-01',
       'content-type': 'application/json',
     },
-    body: JSON.stringify({
-      model: 'claude-haiku-4-5-20251001',
-      max_tokens: 8192,
-      tools: [
-        { type: 'web_search_20250305', name: 'web_search', max_uses: 3 },
-        SCORECARD_TOOL,
-      ],
-      messages: [{ role: 'user', content: prompt }],
-    }),
+    body: JSON.stringify(body),
+  })
+  if (!res.ok) {
+    const text = await res.text()
+    throw new Error(`Anthropic API ${res.status}: ${text.slice(0, 200)}`)
+  }
+  return res.json()
+}
+
+/** Step 1: Web search — returns narrative text about the match */
+export async function searchScorecard(teamA: string, teamB: string, matchDate: string): Promise<string> {
+  const key = getKey()
+  const dateStr = new Date(matchDate).toLocaleDateString('en-IN', {
+    day: 'numeric', month: 'long', year: 'numeric',
   })
 
-  if (!res.ok) {
-    const body = await res.text()
-    throw new Error(`Anthropic API ${res.status}: ${body.slice(0, 200)}`)
-  }
+  const data = await callAnthropic(key, {
+    model: 'claude-haiku-4-5-20251001',
+    max_tokens: 4096,
+    tools: [{ type: 'web_search_20250305', name: 'web_search', max_uses: 2 }],
+    messages: [{
+      role: 'user',
+      content: `Search for the complete IPL 2026 cricket match scorecard: ${teamA} vs ${teamB} played on ${dateStr}.
 
-  const data = await res.json()
-  console.log('[scorecard-ai] stop_reason:', data.stop_reason)
+Find from ESPNCricinfo, Cricbuzz, or IPL website:
+- Match result (winner, margin)
+- Toss winner and decision
+- Full batting scorecard: every batter's runs, balls faced, 4s, 6s
+- Full bowling figures: every bowler's overs, maidens, runs, wickets, economy
+- Fielding: catches, stumpings, run outs
 
-  // Look for submit_scorecard tool_use in response
+Report ALL numbers for every player from both teams.`,
+    }],
+  })
+
+  console.log('[search] stop_reason:', data.stop_reason)
+  const textBlocks = (data.content ?? []).filter((b: any) => b.type === 'text')
+  const narrative = textBlocks.map((b: any) => b.text).join('\n')
+  if (!narrative.length) throw new Error('No text in search response')
+  return narrative
+}
+
+/** Step 2: Extract structured scorecard from narrative text (no web search) */
+export async function extractFromNarrative(narrative: string): Promise<ScorecardResult> {
+  const key = getKey()
+
+  const data = await callAnthropic(key, {
+    model: 'claude-haiku-4-5-20251001',
+    max_tokens: 8192,
+    tools: [SCORECARD_TOOL],
+    tool_choice: { type: 'tool', name: 'submit_scorecard' },
+    messages: [{
+      role: 'user',
+      content: `Extract ALL cricket match data from this report and call submit_scorecard.
+
+Include every player from both teams (~22 players, 11 per side) who batted, bowled, or fielded.
+
+Rules:
+- Team abbreviations: MI, KKR, RCB, CSK, DC, SRH, PBKS, RR, LSG, GT
+- confidence: "high" if detailed scorecard found, "medium" if from reports, "low" if uncertain
+- Bowlers who didn't bat: runs=0, balls_faced=0
+- Batters who didn't bowl: wickets=0, overs_bowled=0, economy_rate=0
+- economy_rate = runs per over (e.g. 8.75)
+
+MATCH REPORT:
+${narrative}`,
+    }],
+  })
+
+  console.log('[extract] stop_reason:', data.stop_reason)
   const toolBlock = (data.content ?? []).find(
     (b: any) => b.type === 'tool_use' && b.name === 'submit_scorecard'
   )
+  if (!toolBlock) throw new Error(`No tool_use in extract response`)
 
-  if (toolBlock) {
-    const result = toolBlock.input as ScorecardResult
-    console.log('[scorecard-ai] tool_use found:', JSON.stringify({
-      winner: result.match_winner,
-      confidence: result.confidence,
-      playerCount: result.players?.length ?? 0,
-    }))
-
-    if (!result.players?.length) {
-      throw new Error(`submit_scorecard called with 0 players. stop_reason=${data.stop_reason}`)
-    }
-    return result
-  }
-
-  // Fallback: Claude did web search but responded with text instead of calling the tool.
-  // Extract text and make a second (fast, no web search) call with forced tool_choice.
-  console.log('[scorecard-ai] no tool_use in response, falling back to step 2')
-  const textBlocks = (data.content ?? []).filter((b: any) => b.type === 'text')
-  const narrative = textBlocks.map((b: any) => b.text).join('\n')
-
-  if (!narrative.length) {
-    throw new Error('No text and no tool_use in response')
-  }
-
-  const step2Res = await fetch('https://api.anthropic.com/v1/messages', {
-    method: 'POST',
-    headers: {
-      'x-api-key': key,
-      'anthropic-version': '2023-06-01',
-      'content-type': 'application/json',
-    },
-    body: JSON.stringify({
-      model: 'claude-haiku-4-5-20251001',
-      max_tokens: 8192,
-      tools: [SCORECARD_TOOL],
-      tool_choice: { type: 'tool', name: 'submit_scorecard' },
-      messages: [{ role: 'user', content: `Extract ALL player data from this cricket match report and call submit_scorecard. Include ~22 players (11 per team). Team abbreviations: MI, KKR, RCB, CSK, DC, SRH, PBKS, RR, LSG, GT.\n\n${narrative}` }],
-    }),
-  })
-
-  if (!step2Res.ok) {
-    const body = await step2Res.text()
-    throw new Error(`Anthropic API step2 ${step2Res.status}: ${body.slice(0, 200)}`)
-  }
-
-  const step2Data = await step2Res.json()
-  const step2Tool = (step2Data.content ?? []).find(
-    (b: any) => b.type === 'tool_use' && b.name === 'submit_scorecard'
-  )
-
-  if (!step2Tool) {
-    throw new Error(`No tool_use in step2: ${JSON.stringify(step2Data.content).slice(0, 500)}`)
-  }
-
-  const result = step2Tool.input as ScorecardResult
+  const result = toolBlock.input as ScorecardResult
   if (!result.players?.length) {
-    throw new Error(`Step2 returned 0 players. stop_reason=${step2Data.stop_reason}`)
+    throw new Error(`Extraction returned 0 players (stop_reason: ${data.stop_reason})`)
   }
-
   return result
 }
