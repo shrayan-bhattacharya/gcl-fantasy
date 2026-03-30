@@ -40,7 +40,6 @@ export async function POST(request: Request) {
     .eq('phase', phase)
 
   if (teamsErr) return NextResponse.json({ error: teamsErr.message }, { status: 500 })
-  if (!teams?.length) return NextResponse.json({ success: true, teamsScored: 0 })
 
   // Fetch player stats for this match
   const { data: matchStats } = await supabase
@@ -48,14 +47,12 @@ export async function POST(request: Request) {
     .select('player_id, runs_scored, wickets')
     .eq('match_id', matchId)
 
-  if (!matchStats?.length) return NextResponse.json({ success: true, teamsScored: 0, message: 'No player stats for this match' })
-
   // Index stats by player_id for fast lookup
-  const statsByPlayer = new Map<string, any>(matchStats.map((s: any) => [s.player_id, s]))
+  const statsByPlayer = new Map<string, any>((matchStats ?? []).map((s: any) => [s.player_id, s]))
 
   let teamsScored = 0
 
-  for (const team of teams) {
+  if (teams?.length && matchStats?.length) for (const team of teams) {
     const playerIds = [
       team.batsman_1_id, team.batsman_2_id,
       team.bowler_1_id, team.bowler_2_id,
@@ -107,6 +104,30 @@ export async function POST(request: Request) {
     }
 
     teamsScored++
+  }
+
+  // Score predictions for this match (uses service role — bypasses RLS)
+  const { data: match2 } = await supabase.from('matches').select('match_winner').eq('id', matchId).single()
+  if (match2?.match_winner) {
+    const { data: preds } = await supabase
+      .from('predictions')
+      .select('id, user_id, predicted_match_winner')
+      .eq('match_id', matchId)
+      .eq('is_scored', false)
+
+    for (const pred of preds ?? []) {
+      const pts = pred.predicted_match_winner === match2.match_winner ? 50 : 0
+      await supabase.from('predictions').update({ points_earned: pts, is_scored: true }).eq('id', pred.id)
+      if (pts > 0) {
+        const { data: u } = await supabase.from('users').select('prediction_score, total_score').eq('id', pred.user_id).single()
+        if (u) {
+          await supabase.from('users').update({
+            prediction_score: u.prediction_score + pts,
+            total_score: u.total_score + pts,
+          }).eq('id', pred.user_id)
+        }
+      }
+    }
   }
 
   return NextResponse.json({ success: true, teamsScored })
