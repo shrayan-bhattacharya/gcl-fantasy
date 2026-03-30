@@ -3,13 +3,157 @@
 import { useState, useEffect } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { createClient } from '@/lib/supabase/client'
-import { Users, BarChart2, CheckCircle, XCircle, Loader2, RefreshCw, AlertTriangle, Zap } from 'lucide-react'
+import { Users, CheckCircle, XCircle, Loader2, RefreshCw, AlertTriangle, Zap } from 'lucide-react'
 
 interface SyncResult {
   ok: boolean
   message: string
   detail?: string
   raw?: any
+}
+
+// ── Tool schema for structured extraction (same as scorecard-ai.ts) ──
+const SCORECARD_TOOL = {
+  name: 'submit_scorecard',
+  description: 'Submit the extracted cricket match scorecard data. Call this after searching for the scorecard.',
+  input_schema: {
+    type: 'object',
+    required: ['match_winner', 'toss_winner', 'toss_decision', 'confidence', 'players'],
+    properties: {
+      match_winner: { type: 'string', description: 'Winning team abbreviation (MI, KKR, RCB, CSK, DC, SRH, PBKS, RR, LSG, GT)' },
+      toss_winner: { type: 'string', description: 'Toss winning team abbreviation' },
+      toss_decision: { type: 'string', enum: ['bat', 'bowl'], description: 'Toss decision' },
+      confidence: { type: 'string', enum: ['high', 'medium', 'low'], description: 'high = actual scorecard found, medium = from match reports, low = uncertain' },
+      players: {
+        type: 'array',
+        items: {
+          type: 'object',
+          required: ['name', 'team', 'runs', 'balls_faced', 'fours', 'sixes', 'wickets', 'overs_bowled', 'economy_rate', 'catches', 'stumpings', 'run_outs', 'maidens'],
+          properties: {
+            name: { type: 'string' }, team: { type: 'string' },
+            runs: { type: 'number' }, balls_faced: { type: 'number' },
+            fours: { type: 'number' }, sixes: { type: 'number' },
+            wickets: { type: 'number' }, overs_bowled: { type: 'number' },
+            economy_rate: { type: 'number' }, catches: { type: 'number' },
+            stumpings: { type: 'number' }, run_outs: { type: 'number' },
+            maidens: { type: 'number' },
+          },
+        },
+      },
+    },
+  },
+}
+
+/** Call Anthropic API from the browser — no Vercel timeout */
+async function clientExtractScorecard(
+  teamA: string,
+  teamB: string,
+  matchDate: string,
+  onStatus: (status: string) => void,
+) {
+  const key = process.env.NEXT_PUBLIC_ANTHROPIC_API_KEY
+  if (!key) throw new Error('NEXT_PUBLIC_ANTHROPIC_API_KEY not set')
+
+  const dateStr = new Date(matchDate).toLocaleDateString('en-IN', {
+    day: 'numeric', month: 'long', year: 'numeric',
+  })
+
+  onStatus('Searching web for scorecard...')
+
+  const res = await fetch('https://api.anthropic.com/v1/messages', {
+    method: 'POST',
+    headers: {
+      'x-api-key': key,
+      'anthropic-version': '2023-06-01',
+      'content-type': 'application/json',
+    },
+    body: JSON.stringify({
+      model: 'claude-sonnet-4-6',
+      max_tokens: 8192,
+      tools: [
+        { type: 'web_search_20250305', name: 'web_search', max_uses: 5 },
+        SCORECARD_TOOL,
+      ],
+      messages: [{
+        role: 'user',
+        content: `Search for the complete IPL 2026 cricket match scorecard: ${teamA} vs ${teamB} played on ${dateStr}.
+
+Find the full batting scorecard, bowling figures, and fielding from ESPNCricinfo, Cricbuzz, or the IPL website.
+
+After searching, you MUST call the submit_scorecard tool with ALL the data:
+- match_winner, toss_winner, toss_decision
+- Every player from both teams (~22 players) who batted, bowled, or fielded
+- Team abbreviations: MI, KKR, RCB, CSK, DC, SRH, PBKS, RR, LSG, GT
+- confidence: "high" if actual scorecard found, "medium" if from match reports, "low" if uncertain
+- Bowlers who didn't bat: runs=0, balls_faced=0
+- Batters who didn't bowl: wickets=0, overs_bowled=0, economy_rate=0
+- economy_rate = runs per over (e.g. 8.75)
+- Include ALL players from both teams`,
+      }],
+    }),
+  })
+
+  if (!res.ok) {
+    const body = await res.text()
+    throw new Error(`Anthropic API ${res.status}: ${body.slice(0, 300)}`)
+  }
+
+  const data = await res.json()
+
+  // Look for submit_scorecard tool_use in response
+  const toolBlock = (data.content ?? []).find(
+    (b: any) => b.type === 'tool_use' && b.name === 'submit_scorecard'
+  )
+
+  if (toolBlock) {
+    const result = toolBlock.input
+    if (!result.players?.length) {
+      throw new Error(`Extraction returned 0 players (stop_reason: ${data.stop_reason})`)
+    }
+    return result
+  }
+
+  // Fallback: Claude responded with text, not a tool call — make a second call with forced tool_choice
+  onStatus('Extracting structured data...')
+  const textBlocks = (data.content ?? []).filter((b: any) => b.type === 'text')
+  const narrative = textBlocks.map((b: any) => b.text).join('\n')
+  if (!narrative) throw new Error('No text and no tool_use in response')
+
+  const res2 = await fetch('https://api.anthropic.com/v1/messages', {
+    method: 'POST',
+    headers: {
+      'x-api-key': key,
+      'anthropic-version': '2023-06-01',
+      'content-type': 'application/json',
+    },
+    body: JSON.stringify({
+      model: 'claude-sonnet-4-6',
+      max_tokens: 8192,
+      tools: [SCORECARD_TOOL],
+      tool_choice: { type: 'tool', name: 'submit_scorecard' },
+      messages: [{
+        role: 'user',
+        content: `Extract ALL player data from this cricket match report and call submit_scorecard. Include ~22 players (11 per team). Team abbreviations: MI, KKR, RCB, CSK, DC, SRH, PBKS, RR, LSG, GT.\n\n${narrative}`,
+      }],
+    }),
+  })
+
+  if (!res2.ok) {
+    const body = await res2.text()
+    throw new Error(`Anthropic API step2 ${res2.status}: ${body.slice(0, 300)}`)
+  }
+
+  const data2 = await res2.json()
+  const toolBlock2 = (data2.content ?? []).find(
+    (b: any) => b.type === 'tool_use' && b.name === 'submit_scorecard'
+  )
+  if (!toolBlock2) throw new Error('Failed to extract structured scorecard data')
+
+  const result = toolBlock2.input
+  if (!result.players?.length) {
+    throw new Error(`Extraction returned 0 players in step 2`)
+  }
+  return result
 }
 
 function ResultBadge({ result }: { result: SyncResult }) {
@@ -80,6 +224,7 @@ export default function SyncPage() {
   const [pendingMatches, setPendingMatches] = useState<any[]>([])
   const [retryResults, setRetryResults] = useState<Record<string, SyncResult | null>>({})
   const [retrying, setRetrying] = useState<Record<string, boolean>>({})
+  const [syncStatus, setSyncStatus] = useState<Record<string, string>>({})
 
   useEffect(() => {
     loadPending()
@@ -108,15 +253,32 @@ export default function SyncPage() {
   async function retrySync(matchId: string) {
     setRetrying(prev => ({ ...prev, [matchId]: true }))
     setRetryResults(prev => ({ ...prev, [matchId]: null }))
+    setSyncStatus(prev => ({ ...prev, [matchId]: '' }))
+
     try {
+      // Find match info for the extraction prompt
+      const match = pendingMatches.find(m => m.id === matchId)
+      if (!match) throw new Error('Match not found in pending list')
+
+      // Step 1: Extract scorecard in the browser (no timeout)
+      const scorecard = await clientExtractScorecard(
+        match.team_a,
+        match.team_b,
+        match.match_date,
+        (status) => setSyncStatus(prev => ({ ...prev, [matchId]: status })),
+      )
+
+      // Step 2: Send scorecard to server for scoring pipeline (fast)
+      setSyncStatus(prev => ({ ...prev, [matchId]: 'Running scoring pipeline...' }))
       const res = await fetch('/api/sync/scorecard-ai', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ matchId }),
+        body: JSON.stringify({ matchId, scorecard }),
       })
       const json = await res.json()
+
       if (!res.ok) {
-        setRetryResults(prev => ({ ...prev, [matchId]: { ok: false, message: 'Sync failed', detail: json.error, raw: json } }))
+        setRetryResults(prev => ({ ...prev, [matchId]: { ok: false, message: 'Scoring failed', detail: json.error, raw: json } }))
       } else {
         const unmatchedNote = json.unmatched?.length ? `${json.unmatched.length} unmatched: ${json.unmatched.join(', ')}` : undefined
         setRetryResults(prev => ({ ...prev, [matchId]: {
@@ -128,9 +290,10 @@ export default function SyncPage() {
         loadPending()
       }
     } catch (e: any) {
-      setRetryResults(prev => ({ ...prev, [matchId]: { ok: false, message: 'Network error', detail: e.message } }))
+      setRetryResults(prev => ({ ...prev, [matchId]: { ok: false, message: 'Extraction failed', detail: e.message } }))
     }
     setRetrying(prev => ({ ...prev, [matchId]: false }))
+    setSyncStatus(prev => ({ ...prev, [matchId]: '' }))
   }
 
   async function fullResetResync() {
@@ -170,7 +333,6 @@ export default function SyncPage() {
     setSquadLoading(false)
   }
 
-
   const IPL_TEAMS = ['all', 'CSK', 'MI', 'RCB', 'KKR', 'DC', 'SRH', 'PBKS', 'RR', 'LSG', 'GT']
 
   return (
@@ -179,8 +341,69 @@ export default function SyncPage() {
         <h1 className="text-2xl font-black text-white" style={{ fontFamily: 'Outfit, sans-serif' }}>
           Sync
         </h1>
-        <p className="text-dark-muted text-sm mt-1">Manage IPL 2026 data — scorecards sync automatically, use the tools below only when needed.</p>
+        <p className="text-dark-muted text-sm mt-1">Manage IPL 2026 data — use the tools below to sync scorecards and player data.</p>
       </div>
+
+      {/* Scorecard sync */}
+      <motion.div
+        initial={{ opacity: 0, y: 16 }}
+        animate={{ opacity: 1, y: 0 }}
+        className="glass border border-dark-border rounded-2xl p-6"
+      >
+        <div className="flex items-start gap-4 mb-4">
+          <div className="w-10 h-10 rounded-xl bg-neon-green/10 border border-neon-green/20 flex items-center justify-center shrink-0">
+            <Zap className="w-5 h-5 text-neon-green" />
+          </div>
+          <div className="flex-1">
+            <h3 className="text-white font-bold" style={{ fontFamily: 'Outfit, sans-serif' }}>Scorecard Sync</h3>
+            <p className="text-dark-muted text-sm mt-0.5">
+              Uses Claude AI to search the web for scorecards. Runs in your browser — may take 1-2 minutes.
+            </p>
+          </div>
+          <button
+            onClick={loadPending}
+            className="text-xs text-dark-muted hover:text-white transition-colors flex items-center gap-1"
+          >
+            <RefreshCw className="w-3 h-3" /> Refresh
+          </button>
+        </div>
+
+        {pendingMatches.length === 0 ? (
+          <div className="flex items-center gap-2 text-sm text-neon-green px-3 py-2 rounded-lg bg-neon-green/10 border border-neon-green/20">
+            <CheckCircle className="w-4 h-4 shrink-0" />
+            All completed matches have been synced
+          </div>
+        ) : (
+          <div className="space-y-3">
+            {pendingMatches.map(match => (
+              <div key={match.id} className="border border-dark-border rounded-xl p-4 space-y-2">
+                <div className="flex items-center justify-between gap-3 flex-wrap">
+                  <div className="flex items-center gap-2">
+                    <span className="text-sm font-semibold text-white">{match.team_a} vs {match.team_b}</span>
+                    <span className="text-xs text-dark-muted">{new Date(match.match_date).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })}</span>
+                    {match.sync_status === 'failed' && (
+                      <span className="text-xs px-2 py-0.5 rounded-md bg-red-500/10 text-red-400 border border-red-500/20">failed</span>
+                    )}
+                  </div>
+                  <button
+                    onClick={() => retrySync(match.id)}
+                    disabled={retrying[match.id]}
+                    className="flex items-center gap-2 px-3 py-2 rounded-xl text-xs font-bold bg-neon-green text-dark-base disabled:opacity-60 hover:brightness-110 transition-all shrink-0"
+                    style={{ boxShadow: '0 0 12px rgba(57,255,20,0.2)' }}
+                  >
+                    {retrying[match.id] ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Zap className="w-3.5 h-3.5" />}
+                    {retrying[match.id] ? (syncStatus[match.id] || 'Syncing...') : 'Sync Now'}
+                  </button>
+                </div>
+                {match.sync_error && !retryResults[match.id] && (
+                  <p className="text-xs text-red-400 opacity-80">{match.sync_error}</p>
+                )}
+                {retryResults[match.id] && <ResultBadge result={retryResults[match.id]!} />}
+              </div>
+            ))}
+          </div>
+        )}
+      </motion.div>
 
       {/* Squads — emergency use */}
       <SyncCard icon={Users} title="Sync Player Squads" description="Re-imports player rosters. Only needed if a player is missing from the DB — squads are already loaded.">
@@ -248,79 +471,18 @@ export default function SyncPage() {
         {resetResult && <ResultBadge result={resetResult} />}
       </motion.div>
 
-      {/* Scorecard sync — auto via cron, manual retry here */}
-      <motion.div
-        initial={{ opacity: 0, y: 16 }}
-        animate={{ opacity: 1, y: 0 }}
-        className="glass border border-dark-border rounded-2xl p-6"
-      >
-        <div className="flex items-start gap-4 mb-4">
-          <div className="w-10 h-10 rounded-xl bg-neon-green/10 border border-neon-green/20 flex items-center justify-center shrink-0">
-            <Zap className="w-5 h-5 text-neon-green" />
-          </div>
-          <div className="flex-1">
-            <h3 className="text-white font-bold" style={{ fontFamily: 'Outfit, sans-serif' }}>Scorecard Sync</h3>
-            <p className="text-dark-muted text-sm mt-0.5">
-              Runs automatically every hour via cron — 5 hours after each match. Matches needing sync appear below.
-            </p>
-          </div>
-          <button
-            onClick={loadPending}
-            className="text-xs text-dark-muted hover:text-white transition-colors flex items-center gap-1"
-          >
-            <RefreshCw className="w-3 h-3" /> Refresh
-          </button>
-        </div>
-
-        {pendingMatches.length === 0 ? (
-          <div className="flex items-center gap-2 text-sm text-neon-green px-3 py-2 rounded-lg bg-neon-green/10 border border-neon-green/20">
-            <CheckCircle className="w-4 h-4 shrink-0" />
-            All completed matches have been synced
-          </div>
-        ) : (
-          <div className="space-y-3">
-            {pendingMatches.map(match => (
-              <div key={match.id} className="border border-dark-border rounded-xl p-4 space-y-2">
-                <div className="flex items-center justify-between gap-3 flex-wrap">
-                  <div className="flex items-center gap-2">
-                    <span className="text-sm font-semibold text-white">{match.team_a} vs {match.team_b}</span>
-                    <span className="text-xs text-dark-muted">{new Date(match.match_date).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })}</span>
-                    {match.sync_status === 'failed' && (
-                      <span className="text-xs px-2 py-0.5 rounded-md bg-red-500/10 text-red-400 border border-red-500/20">failed</span>
-                    )}
-                  </div>
-                  <button
-                    onClick={() => retrySync(match.id)}
-                    disabled={retrying[match.id]}
-                    className="flex items-center gap-2 px-3 py-2 rounded-xl text-xs font-bold bg-neon-green text-dark-base disabled:opacity-60 hover:brightness-110 transition-all shrink-0"
-                    style={{ boxShadow: '0 0 12px rgba(57,255,20,0.2)' }}
-                  >
-                    {retrying[match.id] ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Zap className="w-3.5 h-3.5" />}
-                    {retrying[match.id] ? 'Syncing...' : 'Sync Now'}
-                  </button>
-                </div>
-                {match.sync_error && (
-                  <p className="text-xs text-red-400 opacity-80">{match.sync_error}</p>
-                )}
-                {retryResults[match.id] && <ResultBadge result={retryResults[match.id]!} />}
-              </div>
-            ))}
-          </div>
-        )}
-      </motion.div>
-
       {/* Help */}
       <div className="glass border border-dark-border/50 rounded-2xl p-5 text-sm text-dark-muted space-y-2">
         <p className="text-white font-semibold text-sm">Setup checklist</p>
         <ol className="list-decimal list-inside space-y-1 text-xs">
           <li>Run <code className="text-neon-green">migration_sync_status.sql</code> in Supabase SQL Editor</li>
-          <li>Add <code className="text-neon-green">CRON_SECRET</code> to Vercel env vars</li>
-          <li>Scorecards sync automatically 5 h after each match — or use <strong className="text-white">Sync Now</strong> for immediate sync</li>
+          <li>Add <code className="text-neon-green">NEXT_PUBLIC_ANTHROPIC_API_KEY</code> to Vercel env vars</li>
+          <li>Click <strong className="text-white">Sync Now</strong> on any pending match — runs in your browser (1-2 min)</li>
           <li>If stats are wrong: <strong className="text-white">Enter Results</strong> → expand match → edit any field → save</li>
           <li>If a player is missing: <strong className="text-white">Sync Player Squads</strong> to re-import from the roster</li>
           <li>Player data fully broken: <strong className="text-red-400">Full Reset + Resync</strong> (last resort)</li>
         </ol>
-        <p className="text-xs pt-1">Scorecard data: Claude AI web search · powered by <code className="text-neon-green">ANTHROPIC_API_KEY</code></p>
+        <p className="text-xs pt-1">Scorecard data: Claude AI web search · runs client-side in your browser</p>
       </div>
     </div>
   )
