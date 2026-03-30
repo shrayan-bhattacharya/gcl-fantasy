@@ -37,6 +37,7 @@ export async function POST(request: Request) {
     await supabase.from('matches').update({ sync_status: null, sync_error: null }).eq('id', matchId)
 
     const scorecard = await extractScorecard(match.team_a, match.team_b, match.match_date)
+    console.log('[scorecard-ai] extracted:', JSON.stringify({ winner: scorecard.match_winner, confidence: scorecard.confidence, playerCount: scorecard.players?.length ?? 0 }))
 
     if (scorecard.confidence === 'low') {
       await supabase.from('matches').update({
