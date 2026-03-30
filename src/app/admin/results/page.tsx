@@ -42,7 +42,7 @@ export default function AdminResults() {
     setPlayers(p ?? [])
   }
 
-  const upcoming = matches.filter(m => m.status !== 'completed')
+  const upcoming = matches.filter(m => m.status !== 'completed').sort((a, b) => new Date(b.match_date).getTime() - new Date(a.match_date).getTime())
   const completed = matches.filter(m => m.status === 'completed')
   const visibleMatches = tab === 'upcoming' ? upcoming : completed
 
