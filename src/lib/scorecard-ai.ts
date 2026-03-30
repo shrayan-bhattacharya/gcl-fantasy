@@ -69,7 +69,9 @@ Rules:
 - Set confidence "high" if you found the actual scorecard table, "medium" if reconstructed from match reports, "low" if uncertain
 - Bowlers who didn't bat: runs=0, balls_faced=0
 - Batters who didn't bowl: wickets=0, overs_bowled=0, economy_rate=0
-- economy_rate should be runs_per_over (e.g. 8.75), not a percentage`
+- economy_rate should be runs_per_over (e.g. 8.75), not a percentage
+
+You MUST respond with ONLY a valid JSON object. No explanation, no markdown, no text before or after. Start your response with { and end with }. Do not use \`\`\`json or any code fences.`
 
   const res = await fetch('https://api.anthropic.com/v1/messages', {
     method: 'POST',
@@ -99,10 +101,19 @@ Rules:
 
   const text = textBlocks[textBlocks.length - 1].text
 
-  // Extract JSON — Claude sometimes wraps it in ```json fences
-  const jsonMatch = text.match(/```json\s*([\s\S]*?)```/) ?? text.match(/(\{[\s\S]*\})/)
-  if (!jsonMatch) throw new Error(`No JSON found in response: ${text.slice(0, 300)}`)
+  // Extract JSON — strip code fences, find the JSON object
+  let cleaned = text
+    .replace(/```json\s*/gi, '')
+    .replace(/```\s*/g, '')
+    .trim()
 
-  const raw = jsonMatch[1] ?? jsonMatch[0]
+  // Find the outermost JSON object
+  const start = cleaned.indexOf('{')
+  const end = cleaned.lastIndexOf('}')
+  if (start === -1 || end === -1 || end <= start) {
+    throw new Error(`No JSON found in response: ${text.slice(0, 300)}`)
+  }
+
+  const raw = cleaned.slice(start, end + 1)
   return JSON.parse(raw) as ScorecardResult
 }
