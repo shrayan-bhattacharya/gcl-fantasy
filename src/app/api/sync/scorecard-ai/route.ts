@@ -3,6 +3,9 @@ import { createClient, createServiceClient } from '@/lib/supabase/server'
 import { extractScorecard } from '@/lib/scorecard-ai'
 import { runScoringPipeline } from '@/lib/scoring-pipeline'
 
+// Vercel Hobby plan max is 60s — two Anthropic calls with web search need time
+export const maxDuration = 60
+
 async function getAdminUser() {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
