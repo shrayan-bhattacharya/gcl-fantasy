@@ -1,10 +1,7 @@
 import { NextResponse } from 'next/server'
 import { createClient, createServiceClient } from '@/lib/supabase/server'
-import { extractScorecard } from '@/lib/scorecard-ai'
 import { runScoringPipeline } from '@/lib/scoring-pipeline'
-
-// Vercel Hobby plan max is 60s — two Anthropic calls with web search need time
-export const maxDuration = 60
+import type { ScorecardResult } from '@/lib/scorecard-ai'
 
 async function getAdminUser() {
   const supabase = await createClient()
@@ -21,31 +18,17 @@ export async function POST(request: Request) {
     const admin = await getAdminUser()
     if (!admin) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
 
-    ;({ matchId } = await request.json())
+    let scorecard: ScorecardResult | undefined
+    ;({ matchId, scorecard } = await request.json())
     if (!matchId) return NextResponse.json({ error: 'matchId required' }, { status: 400 })
+    if (!scorecard) return NextResponse.json({ error: 'scorecard required — extraction happens client-side' }, { status: 400 })
 
     const supabase = await createServiceClient()
-
-    const { data: match, error: matchErr } = await supabase
-      .from('matches')
-      .select('id, team_a, team_b, match_date')
-      .eq('id', matchId)
-      .single()
-
-    if (matchErr || !match) {
-      return NextResponse.json({ error: 'Match not found' }, { status: 404 })
-    }
-
-    // Mark as in-progress so UI can reflect it
-    await supabase.from('matches').update({ sync_status: null, sync_error: null }).eq('id', matchId)
-
-    const scorecard = await extractScorecard(match.team_a, match.team_b, match.match_date)
-    console.log('[scorecard-ai] extracted:', JSON.stringify({ winner: scorecard.match_winner, confidence: scorecard.confidence, playerCount: scorecard.players?.length ?? 0 }))
 
     if (scorecard.confidence === 'low') {
       await supabase.from('matches').update({
         sync_status: 'failed',
-        sync_error: 'Claude returned low confidence',
+        sync_error: 'Low confidence extraction',
       }).eq('id', matchId)
       return NextResponse.json({
         error: 'Low confidence extraction — check the raw data and retry or enter manually',
@@ -66,12 +49,10 @@ export async function POST(request: Request) {
       ...pipeline,
       matchWinner: scorecard.match_winner,
       confidence: scorecard.confidence,
-      raw: scorecard,
     })
   } catch (err: any) {
     console.error('[scorecard-ai] error:', err)
 
-    // Best-effort: mark as failed
     if (matchId) {
       try {
         const supabase = await createServiceClient()
