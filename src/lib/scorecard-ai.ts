@@ -94,7 +94,7 @@ After searching, you MUST call the submit_scorecard tool with ALL the data:
       'content-type': 'application/json',
     },
     body: JSON.stringify({
-      model: 'claude-sonnet-4-6',
+      model: 'claude-haiku-4-5-20251001',
       max_tokens: 8192,
       tools: [
         { type: 'web_search_20250305', name: 'web_search', max_uses: 3 },
@@ -149,7 +149,7 @@ After searching, you MUST call the submit_scorecard tool with ALL the data:
       'content-type': 'application/json',
     },
     body: JSON.stringify({
-      model: 'claude-sonnet-4-6',
+      model: 'claude-haiku-4-5-20251001',
       max_tokens: 8192,
       tools: [SCORECARD_TOOL],
       tool_choice: { type: 'tool', name: 'submit_scorecard' },
