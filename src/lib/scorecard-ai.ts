@@ -87,7 +87,7 @@ export async function searchScorecard(teamA: string, teamB: string, matchDate: s
   const data = await callAnthropic(key, {
     model: 'claude-haiku-4-5-20251001',
     max_tokens: 4096,
-    tools: [{ type: 'web_search_20250305', name: 'web_search', max_uses: 2 }],
+    tools: [{ type: 'web_search_20250305', name: 'web_search', max_uses: 3 }],
     messages: [{
       role: 'user',
       content: `Search for the complete IPL 2026 cricket match scorecard: ${teamA} vs ${teamB} played on ${dateStr}.
@@ -115,22 +115,19 @@ export async function extractFromNarrative(narrative: string): Promise<Scorecard
   const key = getKey()
 
   const data = await callAnthropic(key, {
-    model: 'claude-haiku-4-5-20251001',
+    model: 'claude-sonnet-4-6',
     max_tokens: 8192,
     tools: [SCORECARD_TOOL],
     tool_choice: { type: 'tool', name: 'submit_scorecard' },
     messages: [{
       role: 'user',
-      content: `Extract ALL cricket match data from this report and call submit_scorecard.
+      content: `You are given a cricket match report below. Extract ALL player statistics and call submit_scorecard.
 
-Include every player from both teams (~22 players, 11 per side) who batted, bowled, or fielded.
+IMPORTANT: You MUST include every player from BOTH teams. A T20 match has 11 players per side = ~22 players total. For each player include their batting stats (runs, balls faced, 4s, 6s) AND bowling stats (overs, maidens, wickets, economy) AND fielding (catches, stumpings, run outs). If a player only batted, set bowling stats to 0. If they only bowled, set batting stats to 0.
 
-Rules:
-- Team abbreviations: MI, KKR, RCB, CSK, DC, SRH, PBKS, RR, LSG, GT
-- confidence: "high" if detailed scorecard found, "medium" if from reports, "low" if uncertain
-- Bowlers who didn't bat: runs=0, balls_faced=0
-- Batters who didn't bowl: wickets=0, overs_bowled=0, economy_rate=0
-- economy_rate = runs per over (e.g. 8.75)
+Team abbreviations: MI, KKR, RCB, CSK, DC, SRH, PBKS, RR, LSG, GT
+confidence: "high" if you see detailed per-player numbers, "medium" if partial, "low" if very incomplete
+economy_rate = runs per over (e.g. 8.50)
 
 MATCH REPORT:
 ${narrative}`,
@@ -144,6 +141,7 @@ ${narrative}`,
   if (!toolBlock) throw new Error(`No tool_use in extract response`)
 
   const result = toolBlock.input as ScorecardResult
+  console.log('[extract] players:', result.players?.length ?? 0, 'winner:', result.match_winner)
   if (!result.players?.length) {
     throw new Error(`Extraction returned 0 players (stop_reason: ${data.stop_reason})`)
   }
