@@ -5,7 +5,7 @@ import { createClient } from '@/lib/supabase/client'
 import { IPL_TEAMS, ROLE_ICONS } from '@/constants/ipl'
 import { TeamLogo } from '@/components/ui/TeamLogo'
 import { formatMatchDate } from '@/lib/utils'
-import { Loader2, CheckCircle, ChevronDown, ChevronUp } from 'lucide-react'
+import { Loader2, CheckCircle, ChevronDown, ChevronUp, RotateCcw } from 'lucide-react'
 import type { Database } from '@/types/database.types'
 
 type Match = Database['public']['Tables']['matches']['Row']
@@ -22,13 +22,14 @@ export default function AdminResults() {
   const supabase = createClient()
   const [matches, setMatches] = useState<Match[]>([])
   const [players, setPlayers] = useState<Player[]>([])
+  const [tab, setTab] = useState<'upcoming' | 'completed'>('upcoming')
   const [expanded, setExpanded] = useState<string | null>(null)
   const [loadingStats, setLoadingStats] = useState<Record<string, boolean>>({})
   const [winner, setWinner] = useState<Record<string, IPLTeam | ''>>({})
   const [stats, setStats] = useState<Record<string, Record<string, PlayerStat>>>({})
   const [isPending, startTransition] = useTransition()
   const [saved, setSaved] = useState<Record<string, boolean>>({})
-
+  const [resetting, setResetting] = useState<Record<string, boolean>>({})
 
   useEffect(() => { loadData() }, [])
 
@@ -40,6 +41,10 @@ export default function AdminResults() {
     setMatches(m ?? [])
     setPlayers(p ?? [])
   }
+
+  const upcoming = matches.filter(m => m.status !== 'completed')
+  const completed = matches.filter(m => m.status === 'completed')
+  const visibleMatches = tab === 'upcoming' ? upcoming : completed
 
   function getMatchPlayers(match: Match) {
     return players.filter(p => p.team === match.team_a || p.team === match.team_b)
@@ -54,11 +59,7 @@ export default function AdminResults() {
     if (data?.length) {
       const mapped: Record<string, PlayerStat> = {}
       for (const row of data) {
-        mapped[row.player_id] = {
-          player_id: row.player_id,
-          runs_scored: row.runs_scored ?? 0,
-          wickets: row.wickets ?? 0,
-        }
+        mapped[row.player_id] = { player_id: row.player_id, runs_scored: row.runs_scored ?? 0, wickets: row.wickets ?? 0 }
       }
       setStats(prev => ({ ...prev, [matchId]: { ...(prev[matchId] ?? {}), ...mapped } }))
     }
@@ -82,24 +83,19 @@ export default function AdminResults() {
 
     startTransition(async () => {
       try {
-        // Update match winner
         const { error: matchErr } = await supabase.from('matches').update({ match_winner: w, status: 'completed' }).eq('id', matchId)
         if (matchErr) { alert('Match update failed: ' + matchErr.message); return }
 
-        // Upsert player stats
         const matchStats = stats[matchId] ?? {}
         for (const stat of Object.values(matchStats)) {
           if (stat.player_id) {
             await supabase.from('player_match_stats').upsert({
-              player_id: stat.player_id,
-              match_id: matchId,
-              runs_scored: stat.runs_scored,
-              wickets: stat.wickets,
+              player_id: stat.player_id, match_id: matchId,
+              runs_scored: stat.runs_scored, wickets: stat.wickets,
             }, { onConflict: 'player_id,match_id' })
           }
         }
 
-        // Score predictions + fantasy via server route (bypasses RLS — scores ALL users)
         const res = await fetch('/api/scoring', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -117,13 +113,45 @@ export default function AdminResults() {
     })
   }
 
+  async function resetMatch(matchId: string) {
+    if (!confirm('Reset this match? This will clear scores, stats, and predictions for all users.')) return
+    setResetting(prev => ({ ...prev, [matchId]: true }))
+    try {
+      const res = await fetch('/api/admin/reset-match', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ matchId }),
+      })
+      const result = await res.json()
+      if (!result.success) alert('Reset failed: ' + (result.error ?? 'Unknown error'))
+      else { setExpanded(null); loadData() }
+    } catch (e: any) {
+      alert('Reset error: ' + e.message)
+    }
+    setResetting(prev => ({ ...prev, [matchId]: false }))
+  }
+
   return (
     <div>
       <h1 className="text-2xl font-black text-white mb-2" style={{ fontFamily: 'Outfit, sans-serif' }}>Enter Results</h1>
-      <p className="text-sm text-dark-muted mb-6">Enter match winner + player stats. Prediction scores are calculated automatically.</p>
+      <p className="text-sm text-dark-muted mb-4">Enter match winner + player stats. Scores update for all users automatically.</p>
+
+      {/* Tabs */}
+      <div className="flex gap-1 mb-4 bg-dark-elevated rounded-xl p-1 w-fit">
+        {(['upcoming', 'completed'] as const).map(t => (
+          <button
+            key={t}
+            onClick={() => { setTab(t); setExpanded(null) }}
+            className={`px-4 py-1.5 rounded-lg text-sm font-semibold transition-all capitalize
+              ${tab === t ? 'bg-dark-card text-white shadow' : 'text-dark-muted hover:text-white'}`}
+          >
+            {t} ({t === 'upcoming' ? upcoming.length : completed.length})
+          </button>
+        ))}
+      </div>
 
       <div className="space-y-3">
-        {matches.map(match => {
+        {visibleMatches.map(match => {
           const isOpen = expanded === match.id
           const matchPlayers = getMatchPlayers(match)
           const teamAPlayers = matchPlayers.filter(p => p.team === match.team_a)
@@ -164,7 +192,6 @@ export default function AdminResults() {
                     </div>
                   )}
 
-                  {/* Winner only */}
                   <div className="max-w-xs">
                     <label className="block text-xs text-dark-muted mb-1.5">Match Winner *</label>
                     <select
@@ -178,7 +205,6 @@ export default function AdminResults() {
                     </select>
                   </div>
 
-                  {/* Player stats — runs + wickets only */}
                   {[{ team: match.team_a, teamPlayers: teamAPlayers }, { team: match.team_b, teamPlayers: teamBPlayers }].map(({ team, teamPlayers }) => (
                     <div key={team}>
                       <div className="flex items-center gap-2 mb-2">
@@ -212,8 +238,7 @@ export default function AdminResults() {
                     </div>
                   ))}
 
-                  {/* Actions */}
-                  <div className="pt-2">
+                  <div className="flex flex-wrap gap-3 pt-2">
                     <button
                       onClick={() => saveResults(match.id)}
                       disabled={isPending || !currentWinner}
@@ -228,6 +253,15 @@ export default function AdminResults() {
                       {isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : saved[match.id] ? <CheckCircle className="w-4 h-4" /> : null}
                       {saved[match.id] ? 'Saved!' : 'Save & Score All'}
                     </button>
+
+                    <button
+                      onClick={() => resetMatch(match.id)}
+                      disabled={resetting[match.id]}
+                      className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-bold bg-red-500/10 text-red-400 border border-red-500/20 hover:bg-red-500/20 transition-colors disabled:opacity-50"
+                    >
+                      {resetting[match.id] ? <Loader2 className="w-4 h-4 animate-spin" /> : <RotateCcw className="w-4 h-4" />}
+                      Reset Match
+                    </button>
                   </div>
                 </div>
               )}
@@ -235,8 +269,8 @@ export default function AdminResults() {
           )
         })}
 
-        {matches.length === 0 && (
-          <div className="text-center py-12 text-dark-muted text-sm">No matches yet.</div>
+        {visibleMatches.length === 0 && (
+          <div className="text-center py-12 text-dark-muted text-sm">No {tab} matches.</div>
         )}
       </div>
     </div>

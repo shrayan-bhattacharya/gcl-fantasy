@@ -28,6 +28,8 @@ interface Props {
   totalPredictions: number
   totalMatches: number
   isFantasyLocked: boolean
+  todayMatch: MatchRow | null
+  matchday: number
 }
 
 // Count-up animation component
@@ -58,7 +60,7 @@ const cardVariants: Variants = {
   visible: { opacity: 1, y: 0, transition: { type: 'spring', stiffness: 250, damping: 25 } },
 }
 
-export function DashboardClient({ profile, rank, upcomingMatches, recentPredictions, leaderboardTop, currentUserId, latestFantasyTeam, totalPredictions, totalMatches, isFantasyLocked }: Props) {
+export function DashboardClient({ profile, rank, upcomingMatches, recentPredictions, leaderboardTop, currentUserId, latestFantasyTeam, totalPredictions, totalMatches, isFantasyLocked, todayMatch, matchday }: Props) {
 
   const stats = [
     {
@@ -93,6 +95,59 @@ export function DashboardClient({ profile, rank, upcomingMatches, recentPredicti
 
   return (
     <PageWrapper>
+      {/* Matchday hero */}
+      {todayMatch && (
+        <AnimatedSection className="mb-6">
+          <Link href={`/matches/${todayMatch.id}`}>
+            <motion.div
+              whileHover={{ scale: 1.01 }}
+              className="relative overflow-hidden rounded-2xl border border-dark-border cursor-pointer"
+              style={{ background: 'linear-gradient(135deg, #0a0f1a 0%, #0d1f3c 50%, #0a0f1a 100%)' }}
+            >
+              {/* Glow blobs */}
+              <div className="absolute -top-8 -left-8 w-40 h-40 rounded-full opacity-20 blur-3xl" style={{ backgroundColor: IPL_TEAMS[todayMatch.team_a]?.color ?? '#0066CC' }} />
+              <div className="absolute -bottom-8 -right-8 w-40 h-40 rounded-full opacity-20 blur-3xl" style={{ backgroundColor: IPL_TEAMS[todayMatch.team_b]?.color ?? '#00e5ff' }} />
+
+              <div className="relative px-5 py-5">
+                <div className="flex items-center justify-between mb-4">
+                  <span className="text-xs font-bold tracking-widest text-neon-cyan uppercase">Matchday {matchday}</span>
+                  <span className="text-xs text-dark-muted">{formatMatchDate(todayMatch.match_date)}</span>
+                </div>
+
+                <div className="flex items-center justify-between gap-4">
+                  <div className="flex flex-col items-center gap-2 flex-1">
+                    <TeamLogo team={todayMatch.team_a} size="lg" />
+                    <span className="text-sm font-bold text-white">{todayMatch.team_a}</span>
+                  </div>
+
+                  <div className="flex flex-col items-center gap-1 shrink-0">
+                    <span className="text-2xl font-black text-white" style={{ fontFamily: 'Outfit, sans-serif' }}>VS</span>
+                    {todayMatch.status === 'completed' && todayMatch.match_winner ? (
+                      <span className="text-xs text-neon-gold font-semibold">{todayMatch.match_winner} won</span>
+                    ) : (
+                      <StatusBadge status={todayMatch.status} />
+                    )}
+                  </div>
+
+                  <div className="flex flex-col items-center gap-2 flex-1">
+                    <TeamLogo team={todayMatch.team_b} size="lg" />
+                    <span className="text-sm font-bold text-white">{todayMatch.team_b}</span>
+                  </div>
+                </div>
+
+                {todayMatch.status === 'upcoming' && (
+                  <div className="mt-4 flex justify-center">
+                    <span className="text-xs font-bold px-4 py-1.5 rounded-full bg-neon-green/10 border border-neon-green/30 text-neon-green">
+                      Predict now →
+                    </span>
+                  </div>
+                )}
+              </div>
+            </motion.div>
+          </Link>
+        </AnimatedSection>
+      )}
+
       {/* Header greeting */}
       <AnimatedSection className="mb-6">
         <div className="flex items-end justify-between">
