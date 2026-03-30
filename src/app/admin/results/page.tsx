@@ -5,7 +5,7 @@ import { createClient } from '@/lib/supabase/client'
 import { IPL_TEAMS, ROLE_ICONS } from '@/constants/ipl'
 import { TeamLogo } from '@/components/ui/TeamLogo'
 import { formatMatchDate } from '@/lib/utils'
-import { Loader2, CheckCircle, ChevronDown, ChevronUp, Zap } from 'lucide-react'
+import { Loader2, CheckCircle, ChevronDown, ChevronUp } from 'lucide-react'
 import type { Database } from '@/types/database.types'
 
 type Match = Database['public']['Tables']['matches']['Row']
@@ -28,7 +28,7 @@ export default function AdminResults() {
   const [stats, setStats] = useState<Record<string, Record<string, PlayerStat>>>({})
   const [isPending, startTransition] = useTransition()
   const [saved, setSaved] = useState<Record<string, boolean>>({})
-  const [scoring, setScoring] = useState<Record<string, boolean>>({})
+
 
   useEffect(() => { loadData() }, [])
 
@@ -81,8 +81,10 @@ export default function AdminResults() {
     if (!w) return
 
     startTransition(async () => {
+      // Update match winner
       await supabase.from('matches').update({ match_winner: w, status: 'completed' }).eq('id', matchId)
 
+      // Upsert player stats
       const matchStats = stats[matchId] ?? {}
       for (const stat of Object.values(matchStats)) {
         if (stat.player_id) {
@@ -95,51 +97,17 @@ export default function AdminResults() {
         }
       }
 
-      await scorePredictions(matchId, w)
-      setSaved(prev => ({ ...prev, [matchId]: true }))
-      setTimeout(() => setSaved(prev => ({ ...prev, [matchId]: false })), 3000)
-      loadData()
-    })
-  }
-
-  async function scorePredictions(matchId: string, matchWinner: string) {
-    const { data: preds } = await supabase
-      .from('predictions')
-      .select('id, user_id, predicted_match_winner')
-      .eq('match_id', matchId)
-      .eq('is_scored', false)
-
-    if (!preds?.length) return
-    for (const pred of preds) {
-      const pts = pred.predicted_match_winner === matchWinner ? 50 : 0
-      await supabase.from('predictions').update({ points_earned: pts, is_scored: true }).eq('id', pred.id)
-      if (pts > 0) {
-        const { data: u } = await supabase.from('users').select('prediction_score, total_score').eq('id', pred.user_id).single()
-        if (u) {
-          await supabase.from('users').update({
-            prediction_score: u.prediction_score + pts,
-            total_score: u.total_score + pts,
-          }).eq('id', pred.user_id)
-        }
-      }
-    }
-  }
-
-  async function triggerFantasyScoring(matchId: string) {
-    setScoring(prev => ({ ...prev, [matchId]: true }))
-    try {
-      const res = await fetch('/api/scoring', {
+      // Score predictions + fantasy via server route (bypasses RLS — scores ALL users)
+      await fetch('/api/scoring', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ matchId }),
       })
-      const result = await res.json()
-      if (result.success) alert(`Fantasy scoring complete! Processed ${result.teamsScored} teams.`)
-      else alert('Scoring failed: ' + (result.error ?? 'Unknown error'))
-    } catch {
-      alert('Failed to trigger scoring')
-    }
-    setScoring(prev => ({ ...prev, [matchId]: false }))
+
+      setSaved(prev => ({ ...prev, [matchId]: true }))
+      setTimeout(() => setSaved(prev => ({ ...prev, [matchId]: false })), 3000)
+      loadData()
+    })
   }
 
   return (
@@ -238,7 +206,7 @@ export default function AdminResults() {
                   ))}
 
                   {/* Actions */}
-                  <div className="flex flex-wrap gap-3 pt-2">
+                  <div className="pt-2">
                     <button
                       onClick={() => saveResults(match.id)}
                       disabled={isPending || !currentWinner}
@@ -251,16 +219,7 @@ export default function AdminResults() {
                         }`}
                     >
                       {isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : saved[match.id] ? <CheckCircle className="w-4 h-4" /> : null}
-                      {saved[match.id] ? 'Saved!' : 'Save Results'}
-                    </button>
-
-                    <button
-                      onClick={() => triggerFantasyScoring(match.id)}
-                      disabled={scoring[match.id] || match.status !== 'completed'}
-                      className="flex items-center gap-2 px-5 py-2.5 rounded-xl text-sm font-bold bg-neon-cyan/10 text-neon-cyan border border-neon-cyan/20 hover:bg-neon-cyan/20 transition-colors disabled:opacity-50"
-                    >
-                      {scoring[match.id] ? <Loader2 className="w-4 h-4 animate-spin" /> : <Zap className="w-4 h-4" />}
-                      Score Fantasy
+                      {saved[match.id] ? 'Saved!' : 'Save & Score All'}
                     </button>
                   </div>
                 </div>
