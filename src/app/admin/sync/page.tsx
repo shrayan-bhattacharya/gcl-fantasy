@@ -1,9 +1,9 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { createClient } from '@/lib/supabase/client'
-import { Calendar, Users, BarChart2, CheckCircle, XCircle, Loader2, RefreshCw, AlertTriangle } from 'lucide-react'
+import { Calendar, Users, BarChart2, CheckCircle, XCircle, Loader2, RefreshCw, AlertTriangle, Zap } from 'lucide-react'
 
 interface SyncResult {
   ok: boolean
@@ -80,21 +80,61 @@ export default function SyncPage() {
   const [squadResult, setSquadResult] = useState<SyncResult | null>(null)
   const [squadTeam, setSquadTeam] = useState('all')
 
-  // Scorecard sync
-  const [scorecardLoading, setScorecardLoading] = useState(false)
-  const [scorecardResult, setScorecardResult] = useState<SyncResult | null>(null)
-  const [cricapiMatchId, setCricapiMatchId] = useState('')
-  const [dbMatchId, setDbMatchId] = useState('')
-  const [matches, setMatches] = useState<any[]>([])
-  const [matchesLoaded, setMatchesLoaded] = useState(false)
+  // Pending scorecard sync
+  const [pendingMatches, setPendingMatches] = useState<any[]>([])
+  const [retryResults, setRetryResults] = useState<Record<string, SyncResult | null>>({})
+  const [retrying, setRetrying] = useState<Record<string, boolean>>({})
 
-  async function loadMatches() {
-    const { data } = await supabase
-      .from('matches')
-      .select('id, team_a, team_b, match_date, cricapi_match_id, status')
-      .order('match_date', { ascending: false })
-    setMatches(data ?? [])
-    setMatchesLoaded(true)
+  useEffect(() => {
+    loadPending()
+  }, [])
+
+  async function loadPending() {
+    const fiveHoursAgo = new Date(Date.now() - 5 * 60 * 60 * 1000).toISOString()
+    const [{ data: overdue }, { data: failed }] = await Promise.all([
+      supabase
+        .from('matches')
+        .select('id, team_a, team_b, match_date, status, sync_status, sync_error')
+        .lt('match_date', fiveHoursAgo)
+        .neq('status', 'completed')
+        .order('match_date', { ascending: false }),
+      supabase
+        .from('matches')
+        .select('id, team_a, team_b, match_date, status, sync_status, sync_error')
+        .eq('sync_status', 'failed')
+        .order('match_date', { ascending: false }),
+    ])
+    const combined = [...(overdue ?? []), ...(failed ?? [])]
+    const unique = combined.filter((m, i, arr) => arr.findIndex(x => x.id === m.id) === i)
+    setPendingMatches(unique)
+  }
+
+  async function retrySync(matchId: string) {
+    setRetrying(prev => ({ ...prev, [matchId]: true }))
+    setRetryResults(prev => ({ ...prev, [matchId]: null }))
+    try {
+      const res = await fetch('/api/sync/scorecard-ai', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ matchId }),
+      })
+      const json = await res.json()
+      if (!res.ok) {
+        setRetryResults(prev => ({ ...prev, [matchId]: { ok: false, message: 'Sync failed', detail: json.error, raw: json } }))
+      } else {
+        const unmatchedNote = json.unmatched?.length ? `${json.unmatched.length} unmatched: ${json.unmatched.join(', ')}` : undefined
+        setRetryResults(prev => ({ ...prev, [matchId]: {
+          ok: true,
+          message: `Synced — ${json.statsUpserted} players · ${json.fantasyTeamsScored} teams scored`,
+          detail: unmatchedNote,
+          raw: json,
+        }}))
+        loadPending()
+      }
+    } catch (e: any) {
+      setRetryResults(prev => ({ ...prev, [matchId]: { ok: false, message: 'Network error', detail: e.message } }))
+    }
+    setRetrying(prev => ({ ...prev, [matchId]: false }))
   }
 
   async function fullResetResync() {
@@ -148,29 +188,6 @@ export default function SyncPage() {
     setSquadLoading(false)
   }
 
-  async function syncScorecard() {
-    if (!cricapiMatchId || !dbMatchId) return
-    setScorecardLoading(true)
-    setScorecardResult(null)
-    try {
-      const res = await fetch('/api/sync/scorecard', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ cricapiMatchId, matchId: dbMatchId }),
-      })
-      const json = await res.json()
-      if (!res.ok) setScorecardResult({ ok: false, message: 'Sync failed', detail: json.error, raw: json })
-      else setScorecardResult({
-        ok: true,
-        message: `Scorecard synced`,
-        detail: `${json.statsUpserted} player stats · ${json.fantasyTeamsScored} fantasy teams scored · ${json.unmatchedPlayers ?? 0} unmatched`,
-        raw: json,
-      })
-    } catch (e: any) {
-      setScorecardResult({ ok: false, message: 'Network error', detail: e.message })
-    }
-    setScorecardLoading(false)
-  }
 
   const IPL_TEAMS = ['all', 'CSK', 'MI', 'RCB', 'KKR', 'DC', 'SRH', 'PBKS', 'RR', 'LSG', 'GT']
 
@@ -263,90 +280,80 @@ export default function SyncPage() {
         {squadResult && <ResultBadge result={squadResult} />}
       </SyncCard>
 
-      {/* Scorecard */}
-      <SyncCard icon={BarChart2} title="Sync Match Scorecard" description="Fetch a completed match scorecard and auto-calculate fantasy points.">
-        <div className="space-y-3">
-          {/* Match picker from DB */}
-          <div>
-            <div className="flex items-center gap-2 mb-1.5">
-              <label className="text-xs text-dark-muted font-medium">Select match</label>
-              {!matchesLoaded && (
-                <button onClick={loadMatches} className="text-xs text-neon-green underline">Load matches</button>
-              )}
-            </div>
-            {matchesLoaded && (
-              <select
-                value={dbMatchId}
-                onChange={e => {
-                  setDbMatchId(e.target.value)
-                  const m = matches.find(x => x.id === e.target.value)
-                  if (m?.cricapi_match_id) setCricapiMatchId(String(m.cricapi_match_id))
-                }}
-                className="w-full bg-dark-card border border-dark-border rounded-xl px-3 py-2 text-white text-sm focus:outline-none focus:border-neon-green/50"
-              >
-                <option value="">— pick a match —</option>
-                {matches.map(m => (
-                  <option key={m.id} value={m.id}>
-                    {m.team_a} vs {m.team_b} · {new Date(m.match_date).toLocaleDateString()} [{m.status}]
-                  </option>
-                ))}
-              </select>
-            )}
+      {/* Scorecard sync — auto via cron, manual retry here */}
+      <motion.div
+        initial={{ opacity: 0, y: 16 }}
+        animate={{ opacity: 1, y: 0 }}
+        className="glass border border-dark-border rounded-2xl p-6"
+      >
+        <div className="flex items-start gap-4 mb-4">
+          <div className="w-10 h-10 rounded-xl bg-neon-green/10 border border-neon-green/20 flex items-center justify-center shrink-0">
+            <Zap className="w-5 h-5 text-neon-green" />
           </div>
-
-          {/* Manual CricAPI match ID override */}
-          <div>
-            <label className="block text-xs text-dark-muted font-medium mb-1.5">
-              CricAPI Match ID
-              <span className="text-dark-muted/50 ml-1 font-normal">(UUID — auto-filled when you pick a synced match above)</span>
-            </label>
-            <input
-              type="text"
-              value={cricapiMatchId}
-              onChange={e => setCricapiMatchId(e.target.value)}
-              placeholder="e.g. b39bbd39-c67f-4892-9a48-02e958946718"
-              className="w-full bg-dark-card border border-dark-border rounded-xl px-3 py-2 text-white text-sm placeholder:text-dark-muted/40 focus:outline-none focus:border-neon-green/50"
-            />
+          <div className="flex-1">
+            <h3 className="text-white font-bold" style={{ fontFamily: 'Outfit, sans-serif' }}>Scorecard Sync</h3>
+            <p className="text-dark-muted text-sm mt-0.5">
+              Runs automatically every hour via cron — 5 hours after each match. Matches needing sync appear below.
+            </p>
           </div>
-
-          {!dbMatchId && (
-            <div>
-              <label className="block text-xs text-dark-muted font-medium mb-1.5">DB Match ID (UUID)</label>
-              <input
-                type="text"
-                value={dbMatchId}
-                onChange={e => setDbMatchId(e.target.value)}
-                placeholder="paste match UUID from Supabase"
-                className="w-full bg-dark-card border border-dark-border rounded-xl px-3 py-2 text-white text-sm placeholder:text-dark-muted/40 focus:outline-none focus:border-neon-green/50"
-              />
-            </div>
-          )}
-
           <button
-            onClick={syncScorecard}
-            disabled={scorecardLoading || !cricapiMatchId || !dbMatchId}
-            className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-bold bg-neon-green text-dark-base disabled:opacity-40 hover:brightness-110 transition-all"
-            style={{ boxShadow: '0 0 16px rgba(57,255,20,0.3)' }}
+            onClick={loadPending}
+            className="text-xs text-dark-muted hover:text-white transition-colors flex items-center gap-1"
           >
-            {scorecardLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <BarChart2 className="w-4 h-4" />}
-            {scorecardLoading ? 'Fetching scorecard...' : 'Fetch Scorecard + Score Fantasy'}
+            <RefreshCw className="w-3 h-3" /> Refresh
           </button>
         </div>
-        {scorecardResult && <ResultBadge result={scorecardResult} />}
-      </SyncCard>
+
+        {pendingMatches.length === 0 ? (
+          <div className="flex items-center gap-2 text-sm text-neon-green px-3 py-2 rounded-lg bg-neon-green/10 border border-neon-green/20">
+            <CheckCircle className="w-4 h-4 shrink-0" />
+            All completed matches have been synced
+          </div>
+        ) : (
+          <div className="space-y-3">
+            {pendingMatches.map(match => (
+              <div key={match.id} className="border border-dark-border rounded-xl p-4 space-y-2">
+                <div className="flex items-center justify-between gap-3 flex-wrap">
+                  <div className="flex items-center gap-2">
+                    <span className="text-sm font-semibold text-white">{match.team_a} vs {match.team_b}</span>
+                    <span className="text-xs text-dark-muted">{new Date(match.match_date).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })}</span>
+                    {match.sync_status === 'failed' && (
+                      <span className="text-xs px-2 py-0.5 rounded-md bg-red-500/10 text-red-400 border border-red-500/20">failed</span>
+                    )}
+                  </div>
+                  <button
+                    onClick={() => retrySync(match.id)}
+                    disabled={retrying[match.id]}
+                    className="flex items-center gap-2 px-3 py-2 rounded-xl text-xs font-bold bg-neon-green text-dark-base disabled:opacity-60 hover:brightness-110 transition-all shrink-0"
+                    style={{ boxShadow: '0 0 12px rgba(57,255,20,0.2)' }}
+                  >
+                    {retrying[match.id] ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Zap className="w-3.5 h-3.5" />}
+                    {retrying[match.id] ? 'Syncing...' : 'Sync Now'}
+                  </button>
+                </div>
+                {match.sync_error && (
+                  <p className="text-xs text-red-400 opacity-80">{match.sync_error}</p>
+                )}
+                {retryResults[match.id] && <ResultBadge result={retryResults[match.id]!} />}
+              </div>
+            ))}
+          </div>
+        )}
+      </motion.div>
 
       {/* Help */}
       <div className="glass border border-dark-border/50 rounded-2xl p-5 text-sm text-dark-muted space-y-2">
         <p className="text-white font-semibold text-sm">Setup checklist</p>
         <ol className="list-decimal list-inside space-y-1 text-xs">
-          <li>Run <code className="text-neon-green">migration_cricapi.sql</code> then <code className="text-neon-green">migration_unique_player_name.sql</code> in Supabase SQL Editor</li>
-          <li>Verify <code className="text-neon-green">CRICAPI_SERIES_ID</code> env var is correct — <a href="/api/sync/series" target="_blank" rel="noopener noreferrer" className="text-neon-green underline">Browse available series</a> to find the right ID</li>
-          <li>Click <strong className="text-white">Sync Full Schedule</strong> — merges CricAPI data into seeded match rows</li>
+          <li>Run <code className="text-neon-green">migration_sync_status.sql</code> in Supabase SQL Editor (adds sync tracking columns)</li>
+          <li>Add <code className="text-neon-green">CRON_SECRET</code> to Vercel env vars (any random string)</li>
+          <li>Click <strong className="text-white">Sync Full Schedule</strong> — seeds match rows</li>
           <li>Click <strong className="text-white">Sync Squads (All Teams)</strong> — imports ~220 players, deduped by name</li>
-          <li>After each match: <strong className="text-white">Load matches</strong> → select → <strong className="text-white">Fetch Scorecard + Score Fantasy</strong></li>
-          <li>If duplicates appear: use <strong className="text-red-400">Full Reset + Resync</strong> to start clean</li>
+          <li>Scorecards sync automatically 5 hours after each match via cron — or click <strong className="text-white">Sync Now</strong> above</li>
+          <li>If stats are wrong: go to <strong className="text-white">Enter Results</strong> and edit manually</li>
+          <li>If player duplicates appear: use <strong className="text-red-400">Full Reset + Resync</strong></li>
         </ol>
-        <p className="text-xs pt-1">Data source: <code className="text-neon-green">cricketdata.org</code> (CricAPI)</p>
+        <p className="text-xs pt-1">Scorecard data: Claude AI web search (ANTHROPIC_API_KEY)</p>
       </div>
     </div>
   )
