@@ -92,7 +92,6 @@ export default function SyncPage() {
     const { data } = await supabase
       .from('matches')
       .select('id, team_a, team_b, match_date, cricapi_match_id, status')
-      .not('cricapi_match_id', 'is', null)
       .order('match_date', { ascending: false })
     setMatches(data ?? [])
     setMatchesLoaded(true)
@@ -341,7 +340,8 @@ export default function SyncPage() {
         <p className="text-white font-semibold text-sm">Setup checklist</p>
         <ol className="list-decimal list-inside space-y-1 text-xs">
           <li>Run <code className="text-neon-green">migration_cricapi.sql</code> then <code className="text-neon-green">migration_unique_player_name.sql</code> in Supabase SQL Editor</li>
-          <li>Click <strong className="text-white">Sync Full Schedule</strong> — pulls all IPL 2026 matches</li>
+          <li>Verify <code className="text-neon-green">CRICAPI_SERIES_ID</code> env var is correct — <a href="/api/sync/series" target="_blank" rel="noopener noreferrer" className="text-neon-green underline">Browse available series</a> to find the right ID</li>
+          <li>Click <strong className="text-white">Sync Full Schedule</strong> — merges CricAPI data into seeded match rows</li>
           <li>Click <strong className="text-white">Sync Squads (All Teams)</strong> — imports ~220 players, deduped by name</li>
           <li>After each match: <strong className="text-white">Load matches</strong> → select → <strong className="text-white">Fetch Scorecard + Score Fantasy</strong></li>
           <li>If duplicates appear: use <strong className="text-red-400">Full Reset + Resync</strong> to start clean</li>
