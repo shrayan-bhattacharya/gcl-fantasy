@@ -117,18 +117,22 @@ Rules:
   const jsonData = await callAnthropic(key, {
     model: 'claude-sonnet-4-6',
     max_tokens: 4096,
-    system: 'You are a JSON API. Output ONLY valid JSON. No explanation, no markdown, no code fences. Start with { and end with }.',
+    system: [
+      'You are a JSON-only API endpoint.',
+      'You MUST output a single valid JSON object and absolutely nothing else.',
+      'No explanations. No markdown. No code fences. No text before or after the JSON.',
+      'Your entire response must start with { and end with }.',
+      'If you output anything other than valid JSON, the system will crash.',
+    ].join(' '),
     messages: [
       { role: 'user', content: extractPrompt },
-      { role: 'assistant', content: '{' },
     ],
   })
 
   const jsonBlocks = (jsonData.content ?? []).filter((b: any) => b.type === 'text')
   if (!jsonBlocks.length) throw new Error('No text response from extraction step')
 
-  // Prepend the '{' we prefilled, since Claude continues from there
-  const raw = '{' + jsonBlocks.map((b: any) => b.text).join('')
+  const raw = jsonBlocks.map((b: any) => b.text).join('')
 
   // Strip any accidental code fences
   const cleaned = raw
