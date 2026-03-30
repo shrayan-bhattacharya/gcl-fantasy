@@ -1,17 +1,22 @@
 import { createClient } from '@/lib/supabase/server'
 import Link from 'next/link'
-import { Calendar, Users, BarChart2, UserPlus } from 'lucide-react'
+import { Calendar, Users, BarChart2, UserPlus, AlertTriangle } from 'lucide-react'
 import { FantasyLockControl } from './FantasyLockControl'
 import { PredictionWindowControl } from './PredictionWindowControl'
 
 export default async function AdminOverview() {
   const supabase = await createClient()
-  const [{ count: matchCount }, { count: playerCount }, { count: userCount }, { data: lockSettings }, { data: predWindow }] = await Promise.all([
+  const fiveHoursAgo = new Date(Date.now() - 5 * 60 * 60 * 1000).toISOString()
+
+  const [{ count: matchCount }, { count: playerCount }, { count: userCount }, { data: lockSettings }, { data: predWindow }, { count: pendingSyncCount }] = await Promise.all([
     supabase.from('matches').select('*', { count: 'exact', head: true }),
     supabase.from('ipl_players').select('*', { count: 'exact', head: true }),
     supabase.from('users').select('*', { count: 'exact', head: true }),
     supabase.from('fantasy_lock').select('is_locked, phase').limit(1).single(),
     supabase.from('prediction_window').select('is_open').limit(1).single(),
+    supabase.from('matches').select('*', { count: 'exact', head: true })
+      .lt('match_date', fiveHoursAgo)
+      .neq('status', 'completed'),
   ])
 
   const cards = [
@@ -46,6 +51,17 @@ export default async function AdminOverview() {
       <PredictionWindowControl
         initialOpen={predWindow?.is_open ?? true}
       />
+
+      {(pendingSyncCount ?? 0) > 0 && (
+        <Link href="/admin/sync">
+          <div className="flex items-center gap-3 px-4 py-3 rounded-xl bg-red-500/10 border border-red-500/30 text-red-400 hover:bg-red-500/20 transition-colors mt-6 cursor-pointer">
+            <AlertTriangle className="w-4 h-4 shrink-0" />
+            <p className="text-sm font-medium">
+              {pendingSyncCount} match{(pendingSyncCount ?? 0) > 1 ? 'es' : ''} ended without a synced scorecard — click to sync
+            </p>
+          </div>
+        </Link>
+      )}
 
       <div className="glass rounded-xl border border-dark-border p-6 mt-6">
         <h2 className="text-sm font-bold text-white mb-3">Quick Actions</h2>

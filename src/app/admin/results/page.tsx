@@ -30,6 +30,7 @@ export default function AdminResults() {
   const [matches, setMatches] = useState<Match[]>([])
   const [players, setPlayers] = useState<Player[]>([])
   const [expanded, setExpanded] = useState<string | null>(null)
+  const [loadingStats, setLoadingStats] = useState<Record<string, boolean>>({})
   const [winner, setWinner] = useState<Record<string, IPLTeam | ''>>({})
   const [tossWinner, setTossWinner] = useState<Record<string, IPLTeam | ''>>({})
   const [tossDecision, setTossDecision] = useState<Record<string, 'bat' | 'bowl'>>({})
@@ -53,6 +54,33 @@ export default function AdminResults() {
 
   function getMatchPlayers(match: Match) {
     return players.filter(p => p.team === match.team_a || p.team === match.team_b)
+  }
+
+  async function loadMatchStats(matchId: string) {
+    setLoadingStats(prev => ({ ...prev, [matchId]: true }))
+    const { data } = await supabase
+      .from('player_match_stats')
+      .select('player_id, runs_scored, balls_faced, fours, sixes, wickets, catches, stumpings, run_outs, maiden_overs')
+      .eq('match_id', matchId)
+    if (data?.length) {
+      const mapped: Record<string, PlayerStat> = {}
+      for (const row of data) {
+        mapped[row.player_id] = {
+          player_id: row.player_id,
+          runs_scored: row.runs_scored ?? 0,
+          balls_faced: row.balls_faced ?? 0,
+          fours: row.fours ?? 0,
+          sixes: row.sixes ?? 0,
+          wickets: row.wickets ?? 0,
+          catches: row.catches ?? 0,
+          stumpings: row.stumpings ?? 0,
+          run_outs: row.run_outs ?? 0,
+          maiden_overs: row.maiden_overs ?? 0,
+        }
+      }
+      setStats(prev => ({ ...prev, [matchId]: { ...(prev[matchId] ?? {}), ...mapped } }))
+    }
+    setLoadingStats(prev => ({ ...prev, [matchId]: false }))
   }
 
   function updateStat(matchId: string, playerId: string, field: keyof PlayerStat, value: number) {
@@ -190,7 +218,11 @@ export default function AdminResults() {
               {/* Header */}
               <div
                 className="flex items-center gap-3 px-4 py-4 cursor-pointer hover:bg-dark-elevated transition-colors"
-                onClick={() => setExpanded(isOpen ? null : match.id)}
+                onClick={() => {
+                  const next = isOpen ? null : match.id
+                  setExpanded(next)
+                  if (next && !stats[next]) loadMatchStats(next)
+                }}
               >
                 <div className="flex items-center gap-2 flex-1 min-w-0">
                   <span className={`text-xs px-2 py-0.5 rounded-md font-medium shrink-0
@@ -213,6 +245,11 @@ export default function AdminResults() {
               {/* Expanded form */}
               {isOpen && (
                 <div className="border-t border-white/5 px-4 pb-5 pt-4 space-y-5">
+                  {loadingStats[match.id] && (
+                    <div className="flex items-center gap-2 text-xs text-dark-muted">
+                      <Loader2 className="w-3.5 h-3.5 animate-spin" /> Loading existing stats…
+                    </div>
+                  )}
                   {/* Winner + Toss */}
                   <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                     <div>
