@@ -6,7 +6,7 @@ import { Menu, X, ShieldCheck, Calendar, Users, BarChart2, RefreshCw, UserCog } 
 
 const ADMIN_NAV = [
   { href: '/admin', label: 'Overview', icon: ShieldCheck },
-  { href: '/admin/sync', label: 'CricAPI Sync', icon: RefreshCw },
+  { href: '/admin/sync', label: 'Sync', icon: RefreshCw },
   { href: '/admin/matches', label: 'Matches', icon: Calendar },
   { href: '/admin/players', label: 'Players', icon: Users },
   { href: '/admin/results', label: 'Enter Results', icon: BarChart2 },

@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { createClient } from '@/lib/supabase/client'
-import { Calendar, Users, BarChart2, CheckCircle, XCircle, Loader2, RefreshCw, AlertTriangle, Zap } from 'lucide-react'
+import { Users, BarChart2, CheckCircle, XCircle, Loader2, RefreshCw, AlertTriangle, Zap } from 'lucide-react'
 
 interface SyncResult {
   ok: boolean
@@ -70,10 +70,6 @@ export default function SyncPage() {
   const [resetLoading, setResetLoading] = useState(false)
   const [resetResult, setResetResult] = useState<SyncResult | null>(null)
   const [resetConfirm, setResetConfirm] = useState(false)
-
-  // Schedule sync
-  const [scheduleLoading, setScheduleLoading] = useState(false)
-  const [scheduleResult, setScheduleResult] = useState<SyncResult | null>(null)
 
   // Squad sync
   const [squadLoading, setSquadLoading] = useState(false)
@@ -156,20 +152,6 @@ export default function SyncPage() {
     setResetLoading(false)
   }
 
-  async function syncSchedule() {
-    setScheduleLoading(true)
-    setScheduleResult(null)
-    try {
-      const res = await fetch('/api/sync/schedule', { method: 'POST' })
-      const json = await res.json()
-      if (!res.ok) setScheduleResult({ ok: false, message: 'Sync failed', detail: json.error, raw: json })
-      else setScheduleResult({ ok: true, message: `Synced ${json.synced} matches`, detail: `${json.upserted ?? json.synced} rows upserted`, raw: json })
-    } catch (e: any) {
-      setScheduleResult({ ok: false, message: 'Network error', detail: e.message })
-    }
-    setScheduleLoading(false)
-  }
-
   async function syncSquads() {
     setSquadLoading(true)
     setSquadResult(null)
@@ -195,68 +177,13 @@ export default function SyncPage() {
     <div className="max-w-3xl mx-auto space-y-6">
       <div>
         <h1 className="text-2xl font-black text-white" style={{ fontFamily: 'Outfit, sans-serif' }}>
-          CricAPI Sync
+          Sync
         </h1>
-        <p className="text-dark-muted text-sm mt-1">Pull live IPL 2026 data from CricAPI (cricketdata.org) into your database.</p>
+        <p className="text-dark-muted text-sm mt-1">Manage IPL 2026 data — scorecards sync automatically, use the tools below only when needed.</p>
       </div>
 
-      {/* Full Reset */}
-      <motion.div
-        initial={{ opacity: 0, y: 16 }}
-        animate={{ opacity: 1, y: 0 }}
-        className="border border-red-500/30 bg-red-500/5 rounded-2xl p-6"
-      >
-        <div className="flex items-start gap-4 mb-4">
-          <div className="w-10 h-10 rounded-xl bg-red-500/10 border border-red-500/20 flex items-center justify-center shrink-0">
-            <AlertTriangle className="w-5 h-5 text-red-400" />
-          </div>
-          <div>
-            <h3 className="text-white font-bold" style={{ fontFamily: 'Outfit, sans-serif' }}>Full Reset + Resync</h3>
-            <p className="text-dark-muted text-sm mt-0.5">Wipes ipl_players, fantasy_teams, fantasy_scores, player_match_stats — then re-syncs all squads from CricAPI. Use in emergencies only.</p>
-          </div>
-        </div>
-        {!resetConfirm ? (
-          <button
-            onClick={() => setResetConfirm(true)}
-            disabled={resetLoading}
-            className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-bold bg-red-600 text-white disabled:opacity-60 hover:bg-red-500 transition-all"
-          >
-            <AlertTriangle className="w-4 h-4" />
-            Full Reset + Resync Players
-          </button>
-        ) : (
-          <div className="flex items-center gap-3">
-            <span className="text-sm text-red-400 font-medium">This will wipe all player + fantasy data. Sure?</span>
-            <button
-              onClick={fullResetResync}
-              disabled={resetLoading}
-              className="flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-bold bg-red-600 text-white hover:bg-red-500 transition-all disabled:opacity-60"
-            >
-              {resetLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : null}
-              {resetLoading ? 'Resetting...' : 'Yes, wipe and resync'}
-            </button>
-            <button onClick={() => setResetConfirm(false)} className="text-sm text-dark-muted hover:text-white transition-colors">Cancel</button>
-          </div>
-        )}
-        {resetResult && <ResultBadge result={resetResult} />}
-      </motion.div>
-
-      {/* Schedule */}
-      <SyncCard icon={Calendar} title="Sync Schedule" description="Pull all IPL 2026 match fixtures, venues, and results from CricAPI.">
-        <button
-          onClick={syncSchedule}
-          disabled={scheduleLoading}
-          className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-bold bg-neon-green text-dark-base disabled:opacity-60 hover:brightness-110 transition-all"
-          style={{ boxShadow: '0 0 16px rgba(57,255,20,0.3)' }}
-        >
-          {scheduleLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-4 h-4" />}
-          {scheduleLoading ? 'Syncing...' : 'Sync Full Schedule'}
-        </button>
-        {scheduleResult && <ResultBadge result={scheduleResult} />}
-      </SyncCard>
-
-      {/* Squads */}
-      <SyncCard icon={Users} title="Sync Player Squads" description="Import all team rosters with player roles from CricAPI. Deduplicates by name automatically.">
+      {/* Squads — emergency use */}
+      <SyncCard icon={Users} title="Sync Player Squads" description="Re-imports player rosters. Only needed if a player is missing from the DB — squads are already loaded.">
         <div className="flex gap-3 flex-wrap">
           <select
             value={squadTeam}
@@ -279,6 +206,47 @@ export default function SyncPage() {
         </div>
         {squadResult && <ResultBadge result={squadResult} />}
       </SyncCard>
+
+      {/* Full Reset — danger zone */}
+      <motion.div
+        initial={{ opacity: 0, y: 16 }}
+        animate={{ opacity: 1, y: 0 }}
+        className="border border-red-500/30 bg-red-500/5 rounded-2xl p-6"
+      >
+        <div className="flex items-start gap-4 mb-4">
+          <div className="w-10 h-10 rounded-xl bg-red-500/10 border border-red-500/20 flex items-center justify-center shrink-0">
+            <AlertTriangle className="w-5 h-5 text-red-400" />
+          </div>
+          <div>
+            <h3 className="text-white font-bold" style={{ fontFamily: 'Outfit, sans-serif' }}>Full Reset + Resync Players</h3>
+            <p className="text-dark-muted text-sm mt-0.5">Wipes <code className="text-red-400">ipl_players</code>, <code className="text-red-400">fantasy_teams</code>, <code className="text-red-400">fantasy_scores</code>, <code className="text-red-400">player_match_stats</code> and re-imports all squads. Use only if player data is completely broken.</p>
+          </div>
+        </div>
+        {!resetConfirm ? (
+          <button
+            onClick={() => setResetConfirm(true)}
+            disabled={resetLoading}
+            className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-bold bg-red-600 text-white disabled:opacity-60 hover:bg-red-500 transition-all"
+          >
+            <AlertTriangle className="w-4 h-4" />
+            Full Reset + Resync
+          </button>
+        ) : (
+          <div className="flex items-center gap-3 flex-wrap">
+            <span className="text-sm text-red-400 font-medium">This wipes all player + fantasy data. Are you sure?</span>
+            <button
+              onClick={fullResetResync}
+              disabled={resetLoading}
+              className="flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-bold bg-red-600 text-white hover:bg-red-500 transition-all disabled:opacity-60"
+            >
+              {resetLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : null}
+              {resetLoading ? 'Resetting...' : 'Yes, wipe and resync'}
+            </button>
+            <button onClick={() => setResetConfirm(false)} className="text-sm text-dark-muted hover:text-white transition-colors">Cancel</button>
+          </div>
+        )}
+        {resetResult && <ResultBadge result={resetResult} />}
+      </motion.div>
 
       {/* Scorecard sync — auto via cron, manual retry here */}
       <motion.div
@@ -345,15 +313,14 @@ export default function SyncPage() {
       <div className="glass border border-dark-border/50 rounded-2xl p-5 text-sm text-dark-muted space-y-2">
         <p className="text-white font-semibold text-sm">Setup checklist</p>
         <ol className="list-decimal list-inside space-y-1 text-xs">
-          <li>Run <code className="text-neon-green">migration_sync_status.sql</code> in Supabase SQL Editor (adds sync tracking columns)</li>
-          <li>Add <code className="text-neon-green">CRON_SECRET</code> to Vercel env vars (any random string)</li>
-          <li>Click <strong className="text-white">Sync Full Schedule</strong> — seeds match rows</li>
-          <li>Click <strong className="text-white">Sync Squads (All Teams)</strong> — imports ~220 players, deduped by name</li>
-          <li>Scorecards sync automatically 5 hours after each match via cron — or click <strong className="text-white">Sync Now</strong> above</li>
-          <li>If stats are wrong: go to <strong className="text-white">Enter Results</strong> and edit manually</li>
-          <li>If player duplicates appear: use <strong className="text-red-400">Full Reset + Resync</strong></li>
+          <li>Run <code className="text-neon-green">migration_sync_status.sql</code> in Supabase SQL Editor</li>
+          <li>Add <code className="text-neon-green">CRON_SECRET</code> to Vercel env vars</li>
+          <li>Scorecards sync automatically 5 h after each match — or use <strong className="text-white">Sync Now</strong> for immediate sync</li>
+          <li>If stats are wrong: <strong className="text-white">Enter Results</strong> → expand match → edit any field → save</li>
+          <li>If a player is missing: <strong className="text-white">Sync Player Squads</strong> to re-import from the roster</li>
+          <li>Player data fully broken: <strong className="text-red-400">Full Reset + Resync</strong> (last resort)</li>
         </ol>
-        <p className="text-xs pt-1">Scorecard data: Claude AI web search (ANTHROPIC_API_KEY)</p>
+        <p className="text-xs pt-1">Scorecard data: Claude AI web search · powered by <code className="text-neon-green">ANTHROPIC_API_KEY</code></p>
       </div>
     </div>
   )
