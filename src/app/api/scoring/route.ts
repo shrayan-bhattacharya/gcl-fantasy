@@ -109,5 +109,29 @@ export async function POST(request: Request) {
     teamsScored++
   }
 
+  // Score predictions for this match (uses service role — bypasses RLS)
+  const { data: match2 } = await supabase.from('matches').select('match_winner').eq('id', matchId).single()
+  if (match2?.match_winner) {
+    const { data: preds } = await supabase
+      .from('predictions')
+      .select('id, user_id, predicted_match_winner')
+      .eq('match_id', matchId)
+      .eq('is_scored', false)
+
+    for (const pred of preds ?? []) {
+      const pts = pred.predicted_match_winner === match2.match_winner ? 50 : 0
+      await supabase.from('predictions').update({ points_earned: pts, is_scored: true }).eq('id', pred.id)
+      if (pts > 0) {
+        const { data: u } = await supabase.from('users').select('prediction_score, total_score').eq('id', pred.user_id).single()
+        if (u) {
+          await supabase.from('users').update({
+            prediction_score: u.prediction_score + pts,
+            total_score: u.total_score + pts,
+          }).eq('id', pred.user_id)
+        }
+      }
+    }
+  }
+
   return NextResponse.json({ success: true, teamsScored })
 }
