@@ -27,6 +27,7 @@ interface Props {
   isLocked: boolean
   phase: 'league' | 'knockout'
   userId: string
+  playerPoints?: Record<string, number>
 }
 
 const SLOT_LABELS = [
@@ -64,7 +65,7 @@ function squadReducer(state: SquadState, action: SquadAction): SquadState {
   }
 }
 
-export function FantasyClient({ players, existingTeam, isLocked, phase, userId }: Props) {
+export function FantasyClient({ players, existingTeam, isLocked, phase, userId, playerPoints = {} }: Props) {
   const [{ team, activeSlot }, dispatch] = useReducer(squadReducer, undefined, () => {
     if (existingTeam) {
       return {
@@ -194,12 +195,24 @@ export function FantasyClient({ players, existingTeam, isLocked, phase, userId }
           <div className="glass rounded-xl border border-dark-border sticky top-20">
             {/* Header */}
             <div className="px-4 py-3 border-b border-white/5">
-              <h3 className="text-sm font-bold text-white" style={{ fontFamily: 'Outfit, sans-serif' }}>
-                Your {phaseLabel} Squad
-              </h3>
-              <p className="text-xs text-dark-muted">
-                Your 5 players will earn points from every {phase === 'league' ? 'league' : 'knockout'} match
-              </p>
+              <div className="flex items-center justify-between">
+                <div>
+                  <h3 className="text-sm font-bold text-white" style={{ fontFamily: 'Outfit, sans-serif' }}>
+                    Your {phaseLabel} Squad
+                  </h3>
+                  <p className="text-xs text-dark-muted">
+                    Your 5 players will earn points from every {phase === 'league' ? 'league' : 'knockout'} match
+                  </p>
+                </div>
+                {existingTeam?.total_points != null && (
+                  <div className="text-right shrink-0">
+                    <p className="text-lg font-black text-neon-green" style={{ fontFamily: 'Outfit, sans-serif' }}>
+                      {existingTeam.total_points}
+                    </p>
+                    <p className="text-[10px] text-dark-muted">Total pts</p>
+                  </div>
+                )}
+              </div>
             </div>
 
             {isLocked ? (
@@ -212,9 +225,18 @@ export function FantasyClient({ players, existingTeam, isLocked, phase, userId }
                   <div className="mt-4 space-y-2 text-left">
                     {SLOT_LABELS.map(slot => {
                       const player = team[slot.key]
-                      return player ? (
-                        <CompactPlayerCard key={slot.key} player={player} showStats />
-                      ) : null
+                      if (!player) return null
+                      const pts = playerPoints[player.id]
+                      return (
+                        <div key={slot.key} className="relative">
+                          <CompactPlayerCard player={player} showStats />
+                          {pts != null && (
+                            <span className={`absolute right-3 top-1/2 -translate-y-1/2 text-xs font-bold ${pts > 0 ? 'text-neon-green' : 'text-dark-muted'}`}>
+                              {pts > 0 ? `+${pts}` : pts} pts
+                            </span>
+                          )}
+                        </div>
+                      )
                     })}
                   </div>
                 )}
@@ -224,16 +246,23 @@ export function FantasyClient({ players, existingTeam, isLocked, phase, userId }
                 {SLOT_LABELS.map(slot => {
                   const player = team[slot.key]
                   const isActive = activeSlot === slot.key
+                  const pts = player ? playerPoints[player.id] : undefined
                   return player ? (
-                    <CompactPlayerCard
-                      key={slot.key}
-                      player={player}
-                      showStats
-                      onRemove={() => removePlayer(slot.key)}
-                    />
+                    <div key={slot.key} className="relative">
+                      <CompactPlayerCard
+                        player={player}
+                        showStats
+                        onRemove={() => removePlayer(slot.key)}
+                      />
+                      {pts != null && (
+                        <span className={`absolute right-10 top-1/2 -translate-y-1/2 text-xs font-bold ${pts > 0 ? 'text-neon-green' : 'text-dark-muted'}`}>
+                          {pts > 0 ? `+${pts}` : pts} pts
+                        </span>
+                      )}
+                    </div>
                   ) : (
                     <motion.div
-                      key={slot.key}
+                      key={`empty-${slot.key}`}
                       whileHover={{ scale: 1.01 }}
                       onClick={() => dispatch({ type: 'SET_SLOT', slot: slot.key })}
                       className={`flex items-center gap-3 p-3 rounded-xl border cursor-pointer transition-all duration-200

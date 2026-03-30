@@ -311,6 +311,7 @@ export function MatchesClient({ matches, userPredictions, userId, predictionWind
   )
   const [isPending, startTransition] = useTransition()
   const [saving, setSaving] = useState<string | null>(null)
+  const [activeTab, setActiveTab] = useState<'upcoming' | 'completed'>('upcoming')
 
   // Stable predMap — don't recreate on each render
   const predMap = useMemo(
@@ -382,6 +383,34 @@ export function MatchesClient({ matches, userPredictions, userId, predictionWind
 
   return (
     <PageWrapper title="Matches" subtitle="Predict the match winner to earn 50 points">
+      {/* Tab switcher */}
+      <AnimatedSection className="mb-5">
+        <div className="flex gap-2">
+          <button
+            onClick={() => setActiveTab('upcoming')}
+            className={`flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-bold transition-all ${
+              activeTab === 'upcoming'
+                ? 'bg-neon-blue text-white shadow-[0_0_16px_rgba(0,102,204,0.3)]'
+                : 'glass border border-dark-border text-dark-muted hover:text-white'
+            }`}
+          >
+            <Calendar className="w-3.5 h-3.5" />
+            Upcoming ({upcomingDays.reduce((n, g) => n + g.matches.length, 0)})
+          </button>
+          <button
+            onClick={() => setActiveTab('completed')}
+            className={`flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-bold transition-all ${
+              activeTab === 'completed'
+                ? 'bg-neon-green text-dark-base shadow-[0_0_16px_rgba(57,255,20,0.3)]'
+                : 'glass border border-dark-border text-dark-muted hover:text-white'
+            }`}
+          >
+            <CheckCircle className="w-3.5 h-3.5" />
+            Completed ({completedDays.reduce((n, g) => n + g.matches.length, 0)})
+          </button>
+        </div>
+      </AnimatedSection>
+
       <AnimatedSection className="mb-5">
         <div className="flex gap-3 flex-wrap">
           <div className="flex items-center gap-2 glass px-3 py-2 rounded-xl border border-dark-border text-xs">
@@ -395,7 +424,7 @@ export function MatchesClient({ matches, userPredictions, userId, predictionWind
         </div>
       </AnimatedSection>
 
-      {!predictionWindowOpen && (
+      {!predictionWindowOpen && activeTab === 'upcoming' && (
         <AnimatedSection className="mb-5">
           <div className="flex items-center gap-3 px-4 py-3 rounded-xl bg-dark-elevated border border-dark-border text-sm text-dark-muted">
             <AlertCircle className="w-4 h-4 text-neon-orange shrink-0" />
@@ -404,25 +433,34 @@ export function MatchesClient({ matches, userPredictions, userId, predictionWind
         </AnimatedSection>
       )}
 
-      {upcomingDays.map(group => (
-        <DaySection
-          key={group.matchDay}
-          group={group}
-          confirmed={confirmed}
-          picks={picks}
-          saving={saving}
-          predMap={predMap}
-          predWindowOpen={predictionWindowOpen}
-          onSetPick={handleSetPick}
-          onSubmitPrediction={handleSubmitPrediction}
-        />
-      ))}
+      {activeTab === 'upcoming' && (
+        <>
+          {upcomingDays.map(group => (
+            <DaySection
+              key={group.matchDay}
+              group={group}
+              confirmed={confirmed}
+              picks={picks}
+              saving={saving}
+              predMap={predMap}
+              predWindowOpen={predictionWindowOpen}
+              onSetPick={handleSetPick}
+              onSubmitPrediction={handleSubmitPrediction}
+            />
+          ))}
+          {upcomingDays.length === 0 && (
+            <AnimatedSection>
+              <div className="text-center py-16 text-dark-muted">
+                <Calendar className="w-10 h-10 mx-auto mb-3 opacity-30" />
+                <p className="text-sm">No upcoming matches</p>
+              </div>
+            </AnimatedSection>
+          )}
+        </>
+      )}
 
-      {completedDays.length > 0 && (
-        <AnimatedSection>
-          <h2 className="text-sm font-bold text-dark-muted mb-4" style={{ fontFamily: 'Outfit, sans-serif' }}>
-            Completed ({completedDays.reduce((n, g) => n + g.matches.length, 0)} matches)
-          </h2>
+      {activeTab === 'completed' && (
+        <>
           {completedDays.map(group => (
             <DaySection
               key={group.matchDay}
@@ -436,7 +474,15 @@ export function MatchesClient({ matches, userPredictions, userId, predictionWind
               onSubmitPrediction={handleSubmitPrediction}
             />
           ))}
-        </AnimatedSection>
+          {completedDays.length === 0 && (
+            <AnimatedSection>
+              <div className="text-center py-16 text-dark-muted">
+                <CheckCircle className="w-10 h-10 mx-auto mb-3 opacity-30" />
+                <p className="text-sm">No completed matches yet</p>
+              </div>
+            </AnimatedSection>
+          )}
+        </>
       )}
 
       {matches.length === 0 && (
