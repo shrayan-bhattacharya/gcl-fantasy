@@ -40,7 +40,6 @@ export async function POST(request: Request) {
     .eq('phase', phase)
 
   if (teamsErr) return NextResponse.json({ error: teamsErr.message }, { status: 500 })
-  if (!teams?.length) return NextResponse.json({ success: true, teamsScored: 0 })
 
   // Fetch player stats for this match
   const { data: matchStats } = await supabase
@@ -48,14 +47,12 @@ export async function POST(request: Request) {
     .select('player_id, runs_scored, wickets')
     .eq('match_id', matchId)
 
-  if (!matchStats?.length) return NextResponse.json({ success: true, teamsScored: 0, message: 'No player stats for this match' })
-
   // Index stats by player_id for fast lookup
-  const statsByPlayer = new Map<string, any>(matchStats.map((s: any) => [s.player_id, s]))
+  const statsByPlayer = new Map<string, any>((matchStats ?? []).map((s: any) => [s.player_id, s]))
 
   let teamsScored = 0
 
-  for (const team of teams) {
+  if (teams?.length && matchStats?.length) for (const team of teams) {
     const playerIds = [
       team.batsman_1_id, team.batsman_2_id,
       team.bowler_1_id, team.bowler_2_id,
