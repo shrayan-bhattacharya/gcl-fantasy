@@ -161,18 +161,19 @@ export function DashboardClient({ profile, rank, upcomingMatches, recentPredicti
           <p className="text-xs font-bold text-dark-muted uppercase tracking-wider mb-3">
             Players to Watch · {todayMatch.team_a} vs {todayMatch.team_b}
           </p>
-          <div className="flex gap-2 overflow-x-auto pb-1" style={{ scrollbarWidth: 'none' }}>
+          {/* Mobile: horizontal scroll · Desktop: responsive grid */}
+          <div className="flex gap-2 overflow-x-auto pb-1 lg:grid lg:grid-cols-[repeat(auto-fill,minmax(150px,1fr))] lg:overflow-x-visible lg:pb-0" style={{ scrollbarWidth: 'none' }}>
             {playersToWatch.map((player, i) => (
               <motion.div
                 key={player.id}
                 initial={{ opacity: 0, y: 12 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ delay: i * 0.04, type: 'spring', stiffness: 280, damping: 24 }}
-                className="shrink-0 w-28 rounded-xl border border-dark-border bg-dark-card px-3 py-2.5 flex flex-col gap-1"
+                className="shrink-0 w-28 lg:w-auto rounded-xl border border-dark-border bg-dark-card px-3 py-2.5 flex flex-col gap-1"
                 style={{ borderLeftColor: (IPL_TEAMS as any)[player.team]?.color ?? '#444', borderLeftWidth: 3 }}
               >
                 <span className="text-base leading-none">{ROLE_ICONS[player.role]}</span>
-                <p className="text-xs font-semibold text-white leading-tight truncate">{player.name}</p>
+                <p className="text-xs font-semibold text-white leading-tight truncate lg:truncate">{player.name}</p>
                 <p className="text-[10px] text-dark-muted">{player.team}</p>
                 <span
                   className="mt-0.5 self-start text-[10px] font-bold px-1.5 py-0.5 rounded-full"
