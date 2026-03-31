@@ -66,7 +66,6 @@ function squadReducer(state: SquadState, action: SquadAction): SquadState {
 }
 
 export function FantasyClient({ players, existingTeam, isLocked, phase, userId, playerPoints = {} }: Props) {
-  const effectivelyLocked = isLocked && !!existingTeam
   const [{ team, activeSlot }, dispatch] = useReducer(squadReducer, undefined, () => {
     if (existingTeam) {
       return {
@@ -96,6 +95,9 @@ export function FantasyClient({ players, existingTeam, isLocked, phase, userId, 
   })
   const [isSaving, setIsSaving] = useState(false)
   const [showConfetti, setShowConfetti] = useState(false)
+  const [hasSubmitted, setHasSubmitted] = useState(!!existingTeam)
+
+  const effectivelyLocked = isLocked && hasSubmitted
 
   // Whether the current picks differ from the last saved state
   const isDirty = !savedTeam || SLOT_KEYS.some(k => team[k]?.id !== savedTeam[k]?.id)
@@ -162,6 +164,7 @@ export function FantasyClient({ players, existingTeam, isLocked, phase, userId, 
     setIsSaving(false)
     if (!error) {
       setSavedTeam({ ...team })
+      setHasSubmitted(true)
     }
   }
 
