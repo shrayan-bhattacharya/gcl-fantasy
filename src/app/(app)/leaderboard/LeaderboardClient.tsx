@@ -113,7 +113,8 @@ function LeaderboardRow({ user, rank, currentUserId, scoreKey, delay }: {
 }
 
 export function LeaderboardClient({ users, currentUserId }: Props) {
-  const myRank = users.findIndex(u => u.id === currentUserId) + 1
+  const me = users.find(u => u.id === currentUserId)
+  const myRank = me ? users.filter(u => u.total_score > me.total_score).length + 1 : 0
 
   const tabs = [
     { id: 'total',       label: 'Combined',    icon: <Trophy className="w-3.5 h-3.5" /> },
@@ -180,7 +181,7 @@ export function LeaderboardClient({ users, currentUserId }: Props) {
                   <LeaderboardRow
                     key={user.id}
                     user={user}
-                    rank={i + 1}
+                    rank={sorted.findIndex(u => u[scoreKey] === user[scoreKey]) + 1}
                     currentUserId={currentUserId}
                     scoreKey={scoreKey}
                     delay={i * 0.04}
