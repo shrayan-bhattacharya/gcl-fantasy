@@ -151,7 +151,7 @@ ${narrative}`,
   console.log('[extract] players:', result.players?.length ?? 0, 'winner:', result.match_winner)
 
   // Verification: find which target players were not returned in the extraction
-  const foundNames = new Set(result.players.map((p: PlayerStat) => p.name.toLowerCase()))
+  const foundNames = new Set((result.players ?? []).map((p: PlayerStat) => p.name.toLowerCase()))
   const missing = targetPlayers
     .filter(tp => !foundNames.has(tp.name.toLowerCase()))
     .map(tp => `${tp.name} (${tp.team}${tp.role ? ', ' + tp.role : ''})`)
