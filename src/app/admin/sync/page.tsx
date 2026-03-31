@@ -9,6 +9,7 @@ interface SyncResult {
   ok: boolean
   message: string
   detail?: string
+  missing?: string[]   // players whose stats could not be found by AI
   raw?: any
 }
 
@@ -30,6 +31,15 @@ function ResultBadge({ result }: { result: SyncResult }) {
             {result.detail && <p className="text-xs opacity-70 mt-0.5">{result.detail}</p>}
           </div>
         </div>
+        {result.missing && result.missing.length > 0 && (
+          <div className="flex items-start gap-2 text-sm px-3 py-2 rounded-lg bg-yellow-500/10 text-yellow-400 border border-yellow-500/20">
+            <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5" />
+            <div>
+              <p className="font-medium">Stats not found for {result.missing.length} player{result.missing.length !== 1 ? 's' : ''} — add manually</p>
+              <p className="text-xs opacity-70 mt-0.5">{result.missing.join(' · ')}</p>
+            </div>
+          </div>
+        )}
         {result.raw !== undefined && (
           <pre className="text-[11px] text-dark-muted bg-dark-base border border-dark-border rounded-xl p-3 overflow-auto max-h-80 leading-relaxed whitespace-pre-wrap break-all">
             {JSON.stringify(result.raw, null, 2)}
@@ -110,9 +120,9 @@ export default function SyncPage() {
         (fantasyTeams ?? []).flatMap((t: any) => [t.batsman_1_id, t.batsman_2_id, t.bowler_1_id, t.bowler_2_id, t.flex_player_id]).filter(Boolean)
       )]
       const { data: pickedPlayers } = pickedIds.length
-        ? await supabase.from('ipl_players').select('name, team').in('id', pickedIds).in('team', [match.team_a, match.team_b])
+        ? await supabase.from('ipl_players').select('name, team, role').in('id', pickedIds).in('team', [match.team_a, match.team_b])
         : { data: [] }
-      const targetPlayers = (pickedPlayers ?? []).map((p: any) => ({ name: p.name, team: p.team }))
+      const targetPlayers = (pickedPlayers ?? []).map((p: any) => ({ name: p.name, team: p.team, role: p.role }))
 
       // Step 1: Web search (server-side, up to 60s)
       setSyncStatus(prev => ({ ...prev, [matchId]: `Step 1/3 — Searching for ${targetPlayers.length} players...` }))
@@ -133,6 +143,7 @@ export default function SyncPage() {
       })
       const extractJson = await extractRes.json()
       if (!extractRes.ok) throw new Error(extractJson.error || 'Extraction failed')
+      const missingPlayers: string[] = extractJson.scorecard?.missing ?? []
 
       // Step 3: Run scoring pipeline (server-side, fast)
       setSyncStatus(prev => ({ ...prev, [matchId]: 'Step 3/3 — Scoring fantasy teams...' }))
@@ -143,13 +154,14 @@ export default function SyncPage() {
       })
       const scoreJson = await scoreRes.json()
       if (!scoreRes.ok) {
-        setRetryResults(prev => ({ ...prev, [matchId]: { ok: false, message: 'Scoring failed', detail: scoreJson.error, raw: scoreJson } }))
+        setRetryResults(prev => ({ ...prev, [matchId]: { ok: false, message: 'Scoring failed', detail: scoreJson.error, missing: missingPlayers, raw: scoreJson } }))
       } else {
         const unmatchedNote = scoreJson.unmatched?.length ? `${scoreJson.unmatched.length} unmatched: ${scoreJson.unmatched.join(', ')}` : undefined
         setRetryResults(prev => ({ ...prev, [matchId]: {
           ok: true,
           message: `Synced — ${scoreJson.statsUpserted} players · ${scoreJson.fantasyTeamsScored} teams scored`,
           detail: unmatchedNote,
+          missing: missingPlayers,
           raw: scoreJson,
         }}))
         loadPending()

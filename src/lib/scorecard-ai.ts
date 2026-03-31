@@ -9,11 +9,13 @@ export interface ScorecardResult {
   match_winner: string | null
   confidence: 'high' | 'medium' | 'low'
   players: PlayerStat[]
+  missing: string[]   // target players whose stats were not found in the extraction
 }
 
 export interface TargetPlayer {
   name: string
   team: string
+  role?: string   // 'batsman' | 'bowler' | 'allrounder' | 'wicketkeeper'
 }
 
 // Tool schema — only runs + wickets needed for scoring
@@ -77,21 +79,29 @@ export async function searchScorecard(
   const dateStr = new Date(matchDate).toLocaleDateString('en-IN', {
     day: 'numeric', month: 'long', year: 'numeric',
   })
-  const playerList = targetPlayers.map(p => `${p.name} (${p.team})`).join(', ')
+  const allPlayers = targetPlayers.map(p => `${p.name} (${p.team})`).join(', ')
+  const bowlers = targetPlayers
+    .filter(p => p.role === 'bowler' || p.role === 'allrounder')
+    .map(p => `${p.name} (${p.team})`).join(', ') || 'none'
+  const batters = targetPlayers
+    .filter(p => p.role !== 'bowler')
+    .map(p => `${p.name} (${p.team})`).join(', ') || 'none'
 
   const data = await callAnthropic(key, {
-    model: 'claude-haiku-4-5-20251001',
-    max_tokens: 2048,
-    tools: [{ type: 'web_search_20250305', name: 'web_search', max_uses: 3 }],
+    model: 'claude-sonnet-4-6',
+    max_tokens: 4096,
+    tools: [{ type: 'web_search_20250305', name: 'web_search', max_uses: 5 }],
     messages: [{
       role: 'user',
-      content: `Search for the IPL 2026 cricket match: ${teamA} vs ${teamB} on ${dateStr}.
+      content: `Search for the IPL 2026 match: ${teamA} vs ${teamB} on ${dateStr}.
 
-Find:
-1. Which team won the match
-2. Runs scored and wickets taken by ONLY these players: ${playerList}
+I need stats for these players: ${allPlayers}
 
-Search ESPNCricinfo or Cricbuzz. Report the match winner and each player's runs and wickets.`,
+Do TWO focused searches:
+1. Batting scorecard — find runs scored by: ${batters}
+2. Bowling scorecard — find wickets taken by: ${bowlers}
+
+Report the match winner and each player's exact runs and wickets.`,
     }],
   })
 
@@ -108,7 +118,9 @@ export async function extractFromNarrative(
   targetPlayers: TargetPlayer[],
 ): Promise<ScorecardResult> {
   const key = getKey()
-  const playerList = targetPlayers.map(p => `${p.name} (${p.team})`).join(', ')
+  const playerList = targetPlayers
+    .map(p => p.role ? `${p.name} (${p.team}, ${p.role})` : `${p.name} (${p.team})`)
+    .join(', ')
 
   const data = await callAnthropic(key, {
     model: 'claude-sonnet-4-6',
@@ -135,7 +147,15 @@ ${narrative}`,
   )
   if (!toolBlock) throw new Error(`No tool_use in extract response`)
 
-  const result = toolBlock.input as ScorecardResult
+  const result = toolBlock.input as Omit<ScorecardResult, 'missing'>
   console.log('[extract] players:', result.players?.length ?? 0, 'winner:', result.match_winner)
-  return result
+
+  // Verification: find which target players were not returned in the extraction
+  const foundNames = new Set(result.players.map((p: PlayerStat) => p.name.toLowerCase()))
+  const missing = targetPlayers
+    .filter(tp => !foundNames.has(tp.name.toLowerCase()))
+    .map(tp => `${tp.name} (${tp.team}${tp.role ? ', ' + tp.role : ''})`)
+  if (missing.length) console.log('[extract] missing players:', missing)
+
+  return { ...result, missing }
 }
