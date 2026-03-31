@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { createClient } from '@/lib/supabase/client'
-import { Users, CheckCircle, XCircle, Loader2, RefreshCw, AlertTriangle, Zap } from 'lucide-react'
+import { CheckCircle, XCircle, Loader2, RefreshCw, AlertTriangle, Zap, Search } from 'lucide-react'
 
 interface SyncResult {
   ok: boolean
@@ -50,28 +50,6 @@ function ResultBadge({ result }: { result: SyncResult }) {
   )
 }
 
-function SyncCard({ icon: Icon, title, description, children }: {
-  icon: any; title: string; description: string; children: React.ReactNode
-}) {
-  return (
-    <motion.div
-      initial={{ opacity: 0, y: 16 }}
-      animate={{ opacity: 1, y: 0 }}
-      className="glass border border-dark-border rounded-2xl p-6"
-    >
-      <div className="flex items-start gap-4 mb-4">
-        <div className="w-10 h-10 rounded-xl bg-neon-green/10 border border-neon-green/20 flex items-center justify-center shrink-0">
-          <Icon className="w-5 h-5 text-neon-green" />
-        </div>
-        <div>
-          <h3 className="text-white font-bold" style={{ fontFamily: 'Outfit, sans-serif' }}>{title}</h3>
-          <p className="text-dark-muted text-sm mt-0.5">{description}</p>
-        </div>
-      </div>
-      {children}
-    </motion.div>
-  )
-}
 
 export default function SyncPage() {
   const supabase = createClient()
@@ -80,14 +58,16 @@ export default function SyncPage() {
   const [resetResult, setResetResult] = useState<SyncResult | null>(null)
   const [resetConfirm, setResetConfirm] = useState(false)
 
-  const [squadLoading, setSquadLoading] = useState(false)
-  const [squadResult, setSquadResult] = useState<SyncResult | null>(null)
-  const [squadTeam, setSquadTeam] = useState('all')
-
   const [pendingMatches, setPendingMatches] = useState<any[]>([])
   const [retryResults, setRetryResults] = useState<Record<string, SyncResult | null>>({})
   const [retrying, setRetrying] = useState<Record<string, boolean>>({})
   const [syncStatus, setSyncStatus] = useState<Record<string, string>>({})
+
+  const IPL_TEAMS = ['CSK', 'MI', 'RCB', 'KKR', 'DC', 'SRH', 'PBKS', 'RR', 'LSG', 'GT']
+  const [pickTeamA, setPickTeamA] = useState('MI')
+  const [pickTeamB, setPickTeamB] = useState('RCB')
+  const [matchPicks, setMatchPicks] = useState<any[] | null>(null)
+  const [loadingPicks, setLoadingPicks] = useState(false)
 
   useEffect(() => {
     loadPending()
@@ -192,25 +172,34 @@ export default function SyncPage() {
     setResetLoading(false)
   }
 
-  async function syncSquads() {
-    setSquadLoading(true)
-    setSquadResult(null)
-    try {
-      const res = await fetch('/api/sync/squads', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ team: squadTeam === 'all' ? undefined : squadTeam }),
-      })
-      const json = await res.json()
-      if (!res.ok) setSquadResult({ ok: false, message: 'Sync failed', detail: json.error, raw: json })
-      else setSquadResult({ ok: true, message: `Synced ${json.deduped ?? json.synced} players`, detail: `${json.raw} raw · ${json.duplicates?.length ?? 0} dupes removed · Team: ${json.team}`, raw: json })
-    } catch (e: any) {
-      setSquadResult({ ok: false, message: 'Network error', detail: e.message })
+  async function loadMatchPicks() {
+    setLoadingPicks(true)
+    setMatchPicks(null)
+    const { data: fantasyTeams } = await supabase
+      .from('fantasy_teams')
+      .select('batsman_1_id, batsman_2_id, bowler_1_id, bowler_2_id, flex_player_id, user_id')
+    const pickCount: Record<string, Set<string>> = {}
+    for (const t of fantasyTeams ?? []) {
+      for (const pid of [t.batsman_1_id, t.batsman_2_id, t.bowler_1_id, t.bowler_2_id, t.flex_player_id]) {
+        if (pid) {
+          if (!pickCount[pid]) pickCount[pid] = new Set()
+          pickCount[pid].add(t.user_id)
+        }
+      }
     }
-    setSquadLoading(false)
+    const pickedIds = Object.keys(pickCount)
+    if (!pickedIds.length) { setMatchPicks([]); setLoadingPicks(false); return }
+    const { data: players } = await supabase
+      .from('ipl_players')
+      .select('id, name, team, role')
+      .in('id', pickedIds)
+      .in('team', [pickTeamA, pickTeamB])
+    const result = (players ?? [])
+      .map(p => ({ ...p, times_picked: pickCount[p.id]?.size ?? 0 }))
+      .sort((a, b) => b.times_picked - a.times_picked || a.team.localeCompare(b.team) || a.name.localeCompare(b.name))
+    setMatchPicks(result)
+    setLoadingPicks(false)
   }
-
-  const IPL_TEAMS = ['all', 'CSK', 'MI', 'RCB', 'KKR', 'DC', 'SRH', 'PBKS', 'RR', 'LSG', 'GT']
 
   return (
     <div className="max-w-3xl mx-auto space-y-6">
@@ -288,30 +277,76 @@ export default function SyncPage() {
         )}
       </motion.div>
 
-      {/* Squads */}
-      <SyncCard icon={Users} title="Sync Player Squads" description="Re-imports player rosters. Only needed if a player is missing from the DB — squads are already loaded.">
-        <div className="flex gap-3 flex-wrap">
+      {/* Match picks lookup */}
+      <motion.div
+        initial={{ opacity: 0, y: 16 }}
+        animate={{ opacity: 1, y: 0 }}
+        className="glass border border-dark-border rounded-2xl p-6"
+      >
+        <div className="flex items-start gap-4 mb-4">
+          <div className="w-10 h-10 rounded-xl bg-neon-blue/10 border border-neon-blue/20 flex items-center justify-center shrink-0">
+            <Search className="w-5 h-5 text-neon-blue" />
+          </div>
+          <div>
+            <h3 className="text-white font-bold" style={{ fontFamily: 'Outfit, sans-serif' }}>Fantasy Picks by Match</h3>
+            <p className="text-dark-muted text-sm mt-0.5">See which players from two teams are picked across all fantasy squads.</p>
+          </div>
+        </div>
+        <div className="flex gap-3 flex-wrap items-center mb-4">
           <select
-            value={squadTeam}
-            onChange={e => setSquadTeam(e.target.value)}
-            className="bg-dark-card border border-dark-border rounded-xl px-3 py-2 text-white text-sm focus:outline-none focus:border-neon-green/50"
+            value={pickTeamA}
+            onChange={e => setPickTeamA(e.target.value)}
+            className="bg-dark-card border border-dark-border rounded-xl px-3 py-2 text-white text-sm focus:outline-none focus:border-neon-blue/50"
           >
-            {IPL_TEAMS.map(t => (
-              <option key={t} value={t}>{t === 'all' ? 'All Teams' : t}</option>
-            ))}
+            {IPL_TEAMS.map(t => <option key={t} value={t}>{t}</option>)}
+          </select>
+          <span className="text-dark-muted text-sm">vs</span>
+          <select
+            value={pickTeamB}
+            onChange={e => setPickTeamB(e.target.value)}
+            className="bg-dark-card border border-dark-border rounded-xl px-3 py-2 text-white text-sm focus:outline-none focus:border-neon-blue/50"
+          >
+            {IPL_TEAMS.map(t => <option key={t} value={t}>{t}</option>)}
           </select>
           <button
-            onClick={syncSquads}
-            disabled={squadLoading}
-            className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-bold bg-neon-green text-dark-base disabled:opacity-60 hover:brightness-110 transition-all"
-            style={{ boxShadow: '0 0 16px rgba(57,255,20,0.3)' }}
+            onClick={loadMatchPicks}
+            disabled={loadingPicks || pickTeamA === pickTeamB}
+            className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-bold bg-neon-blue text-white disabled:opacity-60 hover:brightness-110 transition-all"
+            style={{ boxShadow: '0 0 16px rgba(0,102,204,0.3)' }}
           >
-            {squadLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Users className="w-4 h-4" />}
-            {squadLoading ? 'Syncing...' : 'Sync Squads'}
+            {loadingPicks ? <Loader2 className="w-4 h-4 animate-spin" /> : <Search className="w-4 h-4" />}
+            {loadingPicks ? 'Loading...' : 'Load Picks'}
           </button>
         </div>
-        {squadResult && <ResultBadge result={squadResult} />}
-      </SyncCard>
+        {matchPicks && (
+          matchPicks.length === 0 ? (
+            <p className="text-sm text-dark-muted">No players from these teams have been picked yet.</p>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="text-xs text-dark-muted border-b border-dark-border">
+                    <th className="text-left py-2 pr-4">Player</th>
+                    <th className="text-left py-2 pr-4">Team</th>
+                    <th className="text-left py-2 pr-4">Role</th>
+                    <th className="text-right py-2">Picks</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {matchPicks.map(p => (
+                    <tr key={p.id} className="border-b border-dark-border/40 hover:bg-dark-elevated transition-colors">
+                      <td className="py-2 pr-4 text-white font-medium">{p.name}</td>
+                      <td className="py-2 pr-4 text-dark-muted">{p.team}</td>
+                      <td className="py-2 pr-4 text-dark-muted capitalize">{p.role}</td>
+                      <td className="py-2 text-right font-bold text-neon-blue">{p.times_picked}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )
+        )}
+      </motion.div>
 
       {/* Full Reset */}
       <motion.div
