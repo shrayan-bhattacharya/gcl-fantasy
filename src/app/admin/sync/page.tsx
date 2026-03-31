@@ -195,8 +195,8 @@ export default function SyncPage() {
       .in('id', pickedIds)
       .in('team', [pickTeamA, pickTeamB])
     const result = (players ?? [])
-      .map(p => ({ ...p, times_picked: pickCount[p.id]?.size ?? 0 }))
-      .sort((a, b) => b.times_picked - a.times_picked || a.team.localeCompare(b.team) || a.name.localeCompare(b.name))
+      .map((p: any) => ({ ...p, times_picked: pickCount[p.id]?.size ?? 0 }))
+      .sort((a: any, b: any) => b.times_picked - a.times_picked || a.team.localeCompare(b.team) || a.name.localeCompare(b.name))
     setMatchPicks(result)
     setLoadingPicks(false)
   }
