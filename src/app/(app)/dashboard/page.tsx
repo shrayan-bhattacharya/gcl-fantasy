@@ -54,6 +54,33 @@ export default async function DashboardPage() {
     .gt('total_score', profile?.total_score ?? 0)
   const rank = (rankCount ?? 0) + 1
 
+  // Players to watch for today's match
+  const todayMatch = todayMatchArr?.[0] ?? null
+  let playersToWatch: { id: string; name: string; team: string; role: string; times_picked: number }[] = []
+  if (todayMatch) {
+    const { data: allTeams } = await supabase
+      .from('fantasy_teams')
+      .select('batsman_1_id, batsman_2_id, bowler_1_id, bowler_2_id, flex_player_id, user_id')
+    const pickCount: Record<string, Set<string>> = {}
+    for (const t of allTeams ?? []) {
+      for (const pid of [t.batsman_1_id, t.batsman_2_id, t.bowler_1_id, t.bowler_2_id, t.flex_player_id]) {
+        if (pid) {
+          if (!pickCount[pid]) pickCount[pid] = new Set()
+          pickCount[pid].add(t.user_id)
+        }
+      }
+    }
+    const pickedIds = Object.keys(pickCount)
+    if (pickedIds.length) {
+      const { data: players } = await supabase
+        .from('ipl_players').select('id, name, team, role')
+        .in('id', pickedIds).in('team', [todayMatch.team_a, todayMatch.team_b])
+      playersToWatch = (players ?? [])
+        .map((p: any) => ({ ...p, times_picked: pickCount[p.id]?.size ?? 0 }))
+        .sort((a: any, b: any) => b.times_picked - a.times_picked)
+    }
+  }
+
   // Per-player fantasy points for the squad section
   let squadPlayerPoints: Record<string, number> = {}
   if (fantasyTeam?.id) {
@@ -81,9 +108,10 @@ export default async function DashboardPage() {
       totalMatches={totalMatches ?? 0}
       isFantasyLocked={lockSettings?.is_locked ?? false}
       predictionWindowOpen={predWindow?.is_open ?? true}
-      todayMatch={todayMatchArr?.[0] ?? null}
+      todayMatch={todayMatch}
       matchday={matchday ?? 0}
       squadPlayerPoints={squadPlayerPoints}
+      playersToWatch={playersToWatch}
     />
   )
 }

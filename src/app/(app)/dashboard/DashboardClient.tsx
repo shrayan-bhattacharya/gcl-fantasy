@@ -31,6 +31,7 @@ interface Props {
   todayMatch: MatchRow | null
   matchday: number
   squadPlayerPoints?: Record<string, number>
+  playersToWatch?: { id: string; name: string; team: string; role: string; times_picked: number }[]
 }
 
 // Count-up animation component
@@ -61,7 +62,7 @@ const cardVariants: Variants = {
   visible: { opacity: 1, y: 0, transition: { type: 'spring', stiffness: 250, damping: 25 } },
 }
 
-export function DashboardClient({ profile, rank, upcomingMatches, recentPredictions, leaderboardTop, currentUserId, latestFantasyTeam, totalPredictions, totalMatches, isFantasyLocked, predictionWindowOpen, todayMatch, matchday, squadPlayerPoints = {} }: Props) {
+export function DashboardClient({ profile, rank, upcomingMatches, recentPredictions, leaderboardTop, currentUserId, latestFantasyTeam, totalPredictions, totalMatches, isFantasyLocked, predictionWindowOpen, todayMatch, matchday, squadPlayerPoints = {}, playersToWatch = [] }: Props) {
 
   const stats = [
     {
@@ -151,6 +152,37 @@ export function DashboardClient({ profile, rank, upcomingMatches, recentPredicti
               </div>
             </motion.div>
           </Link>
+        </AnimatedSection>
+      )}
+
+      {/* Players to Watch */}
+      {todayMatch && playersToWatch.length > 0 && (
+        <AnimatedSection className="mb-6">
+          <p className="text-xs font-bold text-dark-muted uppercase tracking-wider mb-3">
+            Players to Watch · {todayMatch.team_a} vs {todayMatch.team_b}
+          </p>
+          <div className="flex gap-2 overflow-x-auto pb-1" style={{ scrollbarWidth: 'none' }}>
+            {playersToWatch.map((player, i) => (
+              <motion.div
+                key={player.id}
+                initial={{ opacity: 0, y: 12 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: i * 0.04, type: 'spring', stiffness: 280, damping: 24 }}
+                className="shrink-0 w-28 rounded-xl border border-dark-border bg-dark-card px-3 py-2.5 flex flex-col gap-1"
+                style={{ borderLeftColor: (IPL_TEAMS as any)[player.team]?.color ?? '#444', borderLeftWidth: 3 }}
+              >
+                <span className="text-base leading-none">{ROLE_ICONS[player.role]}</span>
+                <p className="text-xs font-semibold text-white leading-tight truncate">{player.name}</p>
+                <p className="text-[10px] text-dark-muted">{player.team}</p>
+                <span
+                  className="mt-0.5 self-start text-[10px] font-bold px-1.5 py-0.5 rounded-full"
+                  style={{ background: 'rgba(0,102,204,0.15)', color: '#0099ff' }}
+                >
+                  {player.times_picked} pick{player.times_picked !== 1 ? 's' : ''}
+                </span>
+              </motion.div>
+            ))}
+          </div>
         </AnimatedSection>
       )}
 
