@@ -17,7 +17,7 @@ export async function POST(request: Request) {
   // Check 1: is the prediction window open?
   const { data: window } = await supabase
     .from('prediction_window')
-    .select('is_open')
+    .select('is_open, opened_at')
     .limit(1)
     .single()
 
@@ -38,7 +38,12 @@ export async function POST(request: Request) {
   if (match.status === 'completed') {
     return NextResponse.json({ error: 'This match has already finished' }, { status: 403 })
   }
-  if (match.prediction_deadline && new Date() > new Date(match.prediction_deadline)) {
+  // Admin override: if window was explicitly opened AFTER this match's deadline, skip the check
+  const adminOverride =
+    !!window?.opened_at &&
+    !!match.prediction_deadline &&
+    new Date(window.opened_at) > new Date(match.prediction_deadline)
+  if (!adminOverride && match.prediction_deadline && new Date() > new Date(match.prediction_deadline)) {
     return NextResponse.json({ error: 'This match has already locked' }, { status: 403 })
   }
 

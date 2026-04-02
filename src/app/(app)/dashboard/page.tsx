@@ -14,7 +14,7 @@ export default async function DashboardPage() {
 
   const { data: predWindow } = await supabase
     .from('prediction_window')
-    .select('is_open')
+    .select('is_open, opened_at')
     .limit(1)
     .single()
 
@@ -54,8 +54,20 @@ export default async function DashboardPage() {
     .gt('total_score', profile?.total_score ?? 0)
   const rank = (rankCount ?? 0) + 1
 
-  // Players to watch for today's match
+  // Effective prediction window state: combines global flag + per-match deadline + admin override
   const todayMatch = todayMatchArr?.[0] ?? null
+  const adminOverride =
+    !!predWindow?.is_open &&
+    !!predWindow?.opened_at &&
+    !!todayMatch?.prediction_deadline &&
+    new Date(predWindow.opened_at) > new Date(todayMatch.prediction_deadline)
+  const effectivePredWindowOpen =
+    (predWindow?.is_open ?? true) &&
+    (adminOverride ||
+     !todayMatch?.prediction_deadline ||
+     new Date() <= new Date(todayMatch.prediction_deadline))
+
+  // Players to watch for today's match
   let playersToWatch: { id: string; name: string; team: string; role: string; times_picked: number }[] = []
   if (todayMatch) {
     const { data: allTeams } = await supabase
@@ -107,7 +119,7 @@ export default async function DashboardPage() {
       totalPredictions={totalPredictions ?? 0}
       totalMatches={totalMatches ?? 0}
       isFantasyLocked={lockSettings?.is_locked ?? false}
-      predictionWindowOpen={predWindow?.is_open ?? true}
+      predictionWindowOpen={effectivePredWindowOpen}
       todayMatch={todayMatch}
       matchday={matchday ?? 0}
       squadPlayerPoints={squadPlayerPoints}

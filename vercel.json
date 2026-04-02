@@ -1,2 +1,7 @@
 {
+  "crons": [
+    { "path": "/api/cron/prediction-window?action=close", "schedule": "0 9 * * *"  },
+    { "path": "/api/cron/prediction-window?action=close", "schedule": "0 13 * * *" }
+  ]
 }
+
