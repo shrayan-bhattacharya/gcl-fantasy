@@ -5,7 +5,7 @@ import { createClient } from '@/lib/supabase/client'
 import { IPL_TEAMS, ROLE_ICONS } from '@/constants/ipl'
 import { TeamLogo } from '@/components/ui/TeamLogo'
 import { formatMatchDate } from '@/lib/utils'
-import { Loader2, CheckCircle, ChevronDown, ChevronUp, Zap } from 'lucide-react'
+import { Loader2, CheckCircle, ChevronDown, ChevronUp, Zap, CloudRain } from 'lucide-react'
 import type { Database } from '@/types/database.types'
 
 type Match = Database['public']['Tables']['matches']['Row']
@@ -29,6 +29,7 @@ export default function AdminResults() {
   const [isPending, startTransition] = useTransition()
   const [saved, setSaved] = useState<Record<string, boolean>>({})
   const [scoring, setScoring] = useState<Record<string, boolean>>({})
+  const [noResulting, setNoResulting] = useState<Record<string, boolean>>({})
 
   useEffect(() => { loadData() }, [])
 
@@ -117,6 +118,22 @@ export default function AdminResults() {
     })
   }
 
+  async function markNoResult(matchId: string) {
+    if (!confirm('Mark this match as No Result? No points will be awarded and any existing scores will not change.')) return
+    setNoResulting(prev => ({ ...prev, [matchId]: true }))
+    try {
+      const { error } = await supabase
+        .from('matches')
+        .update({ status: 'no_result', match_winner: null })
+        .eq('id', matchId)
+      if (error) { alert('Failed: ' + error.message); return }
+      loadData()
+    } catch (e: any) {
+      alert('Error: ' + (e?.message ?? String(e)))
+    }
+    setNoResulting(prev => ({ ...prev, [matchId]: false }))
+  }
+
   async function triggerFantasyScoring(matchId: string) {
     setScoring(prev => ({ ...prev, [matchId]: true }))
     try {
@@ -159,8 +176,8 @@ export default function AdminResults() {
               >
                 <div className="flex items-center gap-2 flex-1 min-w-0">
                   <span className={`text-xs px-2 py-0.5 rounded-md font-medium shrink-0
-                    ${match.status === 'completed' ? 'bg-dark-elevated text-dark-muted' : match.status === 'live' ? 'bg-neon-green/10 text-neon-green' : 'bg-neon-cyan/10 text-neon-cyan'}`}>
-                    {match.status}
+                    ${match.status === 'completed' ? 'bg-dark-elevated text-dark-muted' : match.status === 'live' ? 'bg-neon-green/10 text-neon-green' : match.status === 'no_result' ? 'bg-yellow-500/10 text-yellow-400' : 'bg-neon-cyan/10 text-neon-cyan'}`}>
+                    {match.status === 'no_result' ? 'no result' : match.status}
                   </span>
                   <TeamLogo team={match.team_a} size="xs" />
                   <span className="text-sm font-semibold text-white">{match.team_a} vs {match.team_b}</span>
@@ -254,6 +271,17 @@ export default function AdminResults() {
                       {scoring[match.id] ? <Loader2 className="w-4 h-4 animate-spin" /> : <Zap className="w-4 h-4" />}
                       Score Fantasy
                     </button>
+
+                    {match.status !== 'completed' && match.status !== 'no_result' && (
+                      <button
+                        onClick={() => markNoResult(match.id)}
+                        disabled={noResulting[match.id]}
+                        className="flex items-center gap-2 px-5 py-2.5 rounded-xl text-sm font-bold bg-yellow-500/10 text-yellow-400 border border-yellow-500/20 hover:bg-yellow-500/20 transition-colors disabled:opacity-50"
+                      >
+                        {noResulting[match.id] ? <Loader2 className="w-4 h-4 animate-spin" /> : <CloudRain className="w-4 h-4" />}
+                        No Result
+                      </button>
+                    )}
                   </div>
                 </div>
               )}
