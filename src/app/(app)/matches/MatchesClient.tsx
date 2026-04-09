@@ -56,7 +56,8 @@ const MatchCard = memo(function MatchCard({
   existing, confirmedWinner, pickedWinner, isSaving,
   onSetPick, onSubmitPrediction,
 }: MatchCardProps) {
-  const isLocked = !predWindowOpen || dayIsLocked || matchDeadlinePassed || match.status === 'completed'
+  const isNoResult = match.status === 'no_result'
+  const isLocked = !predWindowOpen || dayIsLocked || matchDeadlinePassed || match.status === 'completed' || isNoResult
   const hasSaved = !!confirmedWinner
   const lockReason = !predWindowOpen
     ? 'Predictions are closed today'
@@ -74,7 +75,7 @@ const MatchCard = memo(function MatchCard({
         ${match.status === 'live' ? 'border-neon-green/40' : 'border-dark-border'}
       `}
       style={match.status === 'live' ? { boxShadow: '0 0 24px rgba(57,255,20,0.12)' } : {}}
-      whileHover={{ y: match.status === 'completed' ? 0 : -2 }}
+      whileHover={{ y: match.status === 'completed' || isNoResult ? 0 : -2 }}
     >
       <div className="absolute left-0 top-0 bottom-0 w-0.5"
         style={{ backgroundColor: IPL_TEAMS[match.team_a]?.color ?? '#0066CC' }} />
@@ -111,6 +112,14 @@ const MatchCard = memo(function MatchCard({
           </div>
         </div>
 
+        {/* No result banner */}
+        {isNoResult && (
+          <div className="mt-3 pt-3 border-t border-white/5 flex items-center gap-2 text-xs text-yellow-400">
+            <span>🌧</span>
+            <span className="font-semibold">Match abandoned — No Result · No points awarded</span>
+          </div>
+        )}
+
         {/* Completed result — always visible */}
         {match.status === 'completed' && match.match_winner && (
           <div className="mt-3 pt-3 border-t border-white/5 flex items-center justify-between">
@@ -128,8 +137,8 @@ const MatchCard = memo(function MatchCard({
         )}
       </div>
 
-      {/* Prediction section — always visible for upcoming matches */}
-      {match.status !== 'completed' && (
+      {/* Prediction section — hidden for completed and no_result matches */}
+      {match.status !== 'completed' && !isNoResult && (
         <div className="px-4 pb-4 pt-1 border-t border-white/5">
           {isLocked ? (
             /* Locked state */
@@ -344,7 +353,7 @@ export function MatchesClient({ matches, userPredictions, userId, predictionWind
           lockTime: getMatchDayLockTime(earliest.match_date),
           unlockTime: getMatchDayUnlockTime(matchDay),
           hasLive: dayMatches.some(m => m.status === 'live'),
-          allCompleted: dayMatches.every(m => m.status === 'completed'),
+          allCompleted: dayMatches.every(m => m.status === 'completed' || m.status === 'no_result'),
         }
       })
   }, [matches])
