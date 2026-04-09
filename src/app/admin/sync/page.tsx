@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { createClient } from '@/lib/supabase/client'
-import { CheckCircle, XCircle, Loader2, RefreshCw, AlertTriangle, Zap, Search } from 'lucide-react'
+import { CheckCircle, XCircle, Loader2, RefreshCw, AlertTriangle, Zap, Search, CloudRain } from 'lucide-react'
 
 interface SyncResult {
   ok: boolean
@@ -62,6 +62,7 @@ export default function SyncPage() {
   const [retryResults, setRetryResults] = useState<Record<string, SyncResult | null>>({})
   const [retrying, setRetrying] = useState<Record<string, boolean>>({})
   const [syncStatus, setSyncStatus] = useState<Record<string, string>>({})
+  const [noResulting, setNoResulting] = useState<Record<string, boolean>>({})
 
   const IPL_TEAMS = ['CSK', 'MI', 'RCB', 'KKR', 'DC', 'SRH', 'PBKS', 'RR', 'LSG', 'GT']
   const [pickTeamA, setPickTeamA] = useState('MI')
@@ -151,6 +152,18 @@ export default function SyncPage() {
     }
     setRetrying(prev => ({ ...prev, [matchId]: false }))
     setSyncStatus(prev => ({ ...prev, [matchId]: '' }))
+  }
+
+  async function markNoResult(matchId: string) {
+    if (!confirm('Mark as No Result? No points will be awarded.')) return
+    setNoResulting(prev => ({ ...prev, [matchId]: true }))
+    const { error } = await supabase
+      .from('matches')
+      .update({ status: 'no_result', match_winner: null })
+      .eq('id', matchId)
+    if (error) alert('Failed: ' + error.message)
+    else loadPending()
+    setNoResulting(prev => ({ ...prev, [matchId]: false }))
   }
 
   async function fullResetResync() {
@@ -256,16 +269,31 @@ export default function SyncPage() {
                     {match.status === 'completed' && !match.sync_status && (
                       <span className="text-xs px-2 py-0.5 rounded-md bg-dark-elevated text-dark-muted border border-dark-border">manual</span>
                     )}
+                    {match.status === 'no_result' && (
+                      <span className="text-xs px-2 py-0.5 rounded-md bg-yellow-500/10 text-yellow-400 border border-yellow-500/20">no result</span>
+                    )}
                   </div>
-                  <button
-                    onClick={() => retrySync(match.id)}
-                    disabled={retrying[match.id]}
-                    className="flex items-center gap-2 px-3 py-2 rounded-xl text-xs font-bold bg-neon-green text-dark-base disabled:opacity-60 hover:brightness-110 transition-all shrink-0"
-                    style={{ boxShadow: '0 0 12px rgba(57,255,20,0.2)' }}
-                  >
-                    {retrying[match.id] ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Zap className="w-3.5 h-3.5" />}
-                    {retrying[match.id] ? (syncStatus[match.id] || 'Syncing...') : 'Sync Now'}
-                  </button>
+                  <div className="flex items-center gap-2 shrink-0">
+                    {match.status !== 'no_result' && (
+                      <button
+                        onClick={() => markNoResult(match.id)}
+                        disabled={noResulting[match.id] || retrying[match.id]}
+                        className="flex items-center gap-2 px-3 py-2 rounded-xl text-xs font-bold bg-yellow-500/10 text-yellow-400 border border-yellow-500/20 hover:bg-yellow-500/20 transition-all disabled:opacity-50"
+                      >
+                        {noResulting[match.id] ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <CloudRain className="w-3.5 h-3.5" />}
+                        No Result
+                      </button>
+                    )}
+                    <button
+                      onClick={() => retrySync(match.id)}
+                      disabled={retrying[match.id] || noResulting[match.id]}
+                      className="flex items-center gap-2 px-3 py-2 rounded-xl text-xs font-bold bg-neon-green text-dark-base disabled:opacity-60 hover:brightness-110 transition-all"
+                      style={{ boxShadow: '0 0 12px rgba(57,255,20,0.2)' }}
+                    >
+                      {retrying[match.id] ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Zap className="w-3.5 h-3.5" />}
+                      {retrying[match.id] ? (syncStatus[match.id] || 'Syncing...') : 'Sync Now'}
+                    </button>
+                  </div>
                 </div>
                 {match.sync_error && !retryResults[match.id] && (
                   <p className="text-xs text-red-400 opacity-80">{match.sync_error}</p>
