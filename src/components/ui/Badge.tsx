@@ -32,12 +32,13 @@ export function Badge({ children, variant = 'muted', size = 'md', className, dot
   )
 }
 
-export function StatusBadge({ status }: { status: 'upcoming' | 'live' | 'completed' }) {
-  const config = {
-    upcoming: { label: 'Upcoming', variant: 'cyan' as const, dot: true },
-    live: { label: 'Live', variant: 'green' as const, dot: true },
-    completed: { label: 'Completed', variant: 'muted' as const, dot: false },
+export function StatusBadge({ status }: { status: 'upcoming' | 'live' | 'completed' | 'no_result' }) {
+  const config: Record<string, { label: string; variant: 'cyan' | 'green' | 'muted' | 'orange'; dot: boolean }> = {
+    upcoming: { label: 'Upcoming', variant: 'cyan', dot: true },
+    live: { label: 'Live', variant: 'green', dot: true },
+    completed: { label: 'Completed', variant: 'muted', dot: false },
+    no_result: { label: 'No Result', variant: 'orange', dot: false },
   }
-  const { label, variant, dot } = config[status]
+  const { label, variant, dot } = config[status] ?? config.upcoming
   return <Badge variant={variant} dot={dot}>{label}</Badge>
 }

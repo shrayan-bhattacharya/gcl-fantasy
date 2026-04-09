@@ -5,7 +5,7 @@ import { createClient } from '@/lib/supabase/client'
 import { IPL_TEAMS, ROLE_ICONS } from '@/constants/ipl'
 import { TeamLogo } from '@/components/ui/TeamLogo'
 import { formatMatchDate } from '@/lib/utils'
-import { Loader2, CheckCircle, ChevronDown, ChevronUp, RotateCcw } from 'lucide-react'
+import { Loader2, CheckCircle, ChevronDown, ChevronUp, Zap, CloudRain } from 'lucide-react'
 import type { Database } from '@/types/database.types'
 
 type Match = Database['public']['Tables']['matches']['Row']
@@ -22,14 +22,14 @@ export default function AdminResults() {
   const supabase = createClient()
   const [matches, setMatches] = useState<Match[]>([])
   const [players, setPlayers] = useState<Player[]>([])
-  const [tab, setTab] = useState<'upcoming' | 'completed'>('upcoming')
   const [expanded, setExpanded] = useState<string | null>(null)
   const [loadingStats, setLoadingStats] = useState<Record<string, boolean>>({})
   const [winner, setWinner] = useState<Record<string, IPLTeam | ''>>({})
   const [stats, setStats] = useState<Record<string, Record<string, PlayerStat>>>({})
   const [isPending, startTransition] = useTransition()
   const [saved, setSaved] = useState<Record<string, boolean>>({})
-  const [resetting, setResetting] = useState<Record<string, boolean>>({})
+  const [scoring, setScoring] = useState<Record<string, boolean>>({})
+  const [noResulting, setNoResulting] = useState<Record<string, boolean>>({})
 
   useEffect(() => { loadData() }, [])
 
@@ -41,10 +41,6 @@ export default function AdminResults() {
     setMatches(m ?? [])
     setPlayers(p ?? [])
   }
-
-  const upcoming = matches.filter(m => m.status !== 'completed').sort((a, b) => new Date(b.match_date).getTime() - new Date(a.match_date).getTime())
-  const completed = matches.filter(m => m.status === 'completed')
-  const visibleMatches = tab === 'upcoming' ? upcoming : completed
 
   function getMatchPlayers(match: Match) {
     return players.filter(p => p.team === match.team_a || p.team === match.team_b)
@@ -59,7 +55,11 @@ export default function AdminResults() {
     if (data?.length) {
       const mapped: Record<string, PlayerStat> = {}
       for (const row of data) {
-        mapped[row.player_id] = { player_id: row.player_id, runs_scored: row.runs_scored ?? 0, wickets: row.wickets ?? 0 }
+        mapped[row.player_id] = {
+          player_id: row.player_id,
+          runs_scored: row.runs_scored ?? 0,
+          wickets: row.wickets ?? 0,
+        }
       }
       setStats(prev => ({ ...prev, [matchId]: { ...(prev[matchId] ?? {}), ...mapped } }))
     }
@@ -83,19 +83,24 @@ export default function AdminResults() {
 
     startTransition(async () => {
       try {
+        // Update match winner
         const { error: matchErr } = await supabase.from('matches').update({ match_winner: w, status: 'completed' }).eq('id', matchId)
         if (matchErr) { alert('Match update failed: ' + matchErr.message); return }
 
+        // Upsert player stats
         const matchStats = stats[matchId] ?? {}
         for (const stat of Object.values(matchStats)) {
           if (stat.player_id) {
             await supabase.from('player_match_stats').upsert({
-              player_id: stat.player_id, match_id: matchId,
-              runs_scored: stat.runs_scored, wickets: stat.wickets,
+              player_id: stat.player_id,
+              match_id: matchId,
+              runs_scored: stat.runs_scored,
+              wickets: stat.wickets,
             }, { onConflict: 'player_id,match_id' })
           }
         }
 
+        // Score predictions + fantasy via server route (bypasses RLS — scores ALL users)
         const res = await fetch('/api/scoring', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -113,45 +118,46 @@ export default function AdminResults() {
     })
   }
 
-  async function resetMatch(matchId: string) {
-    if (!confirm('Reset this match? This will clear scores, stats, and predictions for all users.')) return
-    setResetting(prev => ({ ...prev, [matchId]: true }))
+  async function markNoResult(matchId: string) {
+    if (!confirm('Mark this match as No Result? No points will be awarded and any existing scores will not change.')) return
+    setNoResulting(prev => ({ ...prev, [matchId]: true }))
     try {
-      const res = await fetch('/api/admin/reset-match', {
+      const { error } = await supabase
+        .from('matches')
+        .update({ status: 'no_result', match_winner: null })
+        .eq('id', matchId)
+      if (error) { alert('Failed: ' + error.message); return }
+      loadData()
+    } catch (e: any) {
+      alert('Error: ' + (e?.message ?? String(e)))
+    }
+    setNoResulting(prev => ({ ...prev, [matchId]: false }))
+  }
+
+  async function triggerFantasyScoring(matchId: string) {
+    setScoring(prev => ({ ...prev, [matchId]: true }))
+    try {
+      const res = await fetch('/api/scoring', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ matchId }),
       })
       const result = await res.json()
-      if (!result.success) alert('Reset failed: ' + (result.error ?? 'Unknown error'))
-      else { setExpanded(null); loadData() }
-    } catch (e: any) {
-      alert('Reset error: ' + e.message)
+      if (result.success) alert(`Fantasy scoring complete! Processed ${result.teamsScored} teams.`)
+      else alert('Scoring failed: ' + (result.error ?? 'Unknown error'))
+    } catch {
+      alert('Failed to trigger scoring')
     }
-    setResetting(prev => ({ ...prev, [matchId]: false }))
+    setScoring(prev => ({ ...prev, [matchId]: false }))
   }
 
   return (
     <div>
       <h1 className="text-2xl font-black text-white mb-2" style={{ fontFamily: 'Outfit, sans-serif' }}>Enter Results</h1>
-      <p className="text-sm text-dark-muted mb-4">Enter match winner + player stats. Scores update for all users automatically.</p>
-
-      {/* Tabs */}
-      <div className="flex gap-1 mb-4 bg-dark-elevated rounded-xl p-1 w-fit">
-        {(['upcoming', 'completed'] as const).map(t => (
-          <button
-            key={t}
-            onClick={() => { setTab(t); setExpanded(null) }}
-            className={`px-4 py-1.5 rounded-lg text-sm font-semibold transition-all capitalize
-              ${tab === t ? 'bg-dark-card text-white shadow' : 'text-dark-muted hover:text-white'}`}
-          >
-            {t} ({t === 'upcoming' ? upcoming.length : completed.length})
-          </button>
-        ))}
-      </div>
+      <p className="text-sm text-dark-muted mb-6">Enter match winner + player stats. Prediction scores are calculated automatically.</p>
 
       <div className="space-y-3">
-        {visibleMatches.map(match => {
+        {matches.map(match => {
           const isOpen = expanded === match.id
           const matchPlayers = getMatchPlayers(match)
           const teamAPlayers = matchPlayers.filter(p => p.team === match.team_a)
@@ -170,8 +176,8 @@ export default function AdminResults() {
               >
                 <div className="flex items-center gap-2 flex-1 min-w-0">
                   <span className={`text-xs px-2 py-0.5 rounded-md font-medium shrink-0
-                    ${match.status === 'completed' ? 'bg-dark-elevated text-dark-muted' : match.status === 'live' ? 'bg-neon-green/10 text-neon-green' : 'bg-neon-cyan/10 text-neon-cyan'}`}>
-                    {match.status}
+                    ${match.status === 'completed' ? 'bg-dark-elevated text-dark-muted' : match.status === 'live' ? 'bg-neon-green/10 text-neon-green' : match.status === 'no_result' ? 'bg-yellow-500/10 text-yellow-400' : 'bg-neon-cyan/10 text-neon-cyan'}`}>
+                    {match.status === 'no_result' ? 'no result' : match.status}
                   </span>
                   <TeamLogo team={match.team_a} size="xs" />
                   <span className="text-sm font-semibold text-white">{match.team_a} vs {match.team_b}</span>
@@ -192,6 +198,7 @@ export default function AdminResults() {
                     </div>
                   )}
 
+                  {/* Winner only */}
                   <div className="max-w-xs">
                     <label className="block text-xs text-dark-muted mb-1.5">Match Winner *</label>
                     <select
@@ -205,6 +212,7 @@ export default function AdminResults() {
                     </select>
                   </div>
 
+                  {/* Player stats — runs + wickets only */}
                   {[{ team: match.team_a, teamPlayers: teamAPlayers }, { team: match.team_b, teamPlayers: teamBPlayers }].map(({ team, teamPlayers }) => (
                     <div key={team}>
                       <div className="flex items-center gap-2 mb-2">
@@ -238,6 +246,7 @@ export default function AdminResults() {
                     </div>
                   ))}
 
+                  {/* Actions */}
                   <div className="flex flex-wrap gap-3 pt-2">
                     <button
                       onClick={() => saveResults(match.id)}
@@ -251,17 +260,28 @@ export default function AdminResults() {
                         }`}
                     >
                       {isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : saved[match.id] ? <CheckCircle className="w-4 h-4" /> : null}
-                      {saved[match.id] ? 'Saved!' : 'Save & Score All'}
+                      {saved[match.id] ? 'Saved!' : 'Save Results'}
                     </button>
 
                     <button
-                      onClick={() => resetMatch(match.id)}
-                      disabled={resetting[match.id]}
-                      className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-bold bg-red-500/10 text-red-400 border border-red-500/20 hover:bg-red-500/20 transition-colors disabled:opacity-50"
+                      onClick={() => triggerFantasyScoring(match.id)}
+                      disabled={scoring[match.id] || match.status !== 'completed'}
+                      className="flex items-center gap-2 px-5 py-2.5 rounded-xl text-sm font-bold bg-neon-cyan/10 text-neon-cyan border border-neon-cyan/20 hover:bg-neon-cyan/20 transition-colors disabled:opacity-50"
                     >
-                      {resetting[match.id] ? <Loader2 className="w-4 h-4 animate-spin" /> : <RotateCcw className="w-4 h-4" />}
-                      Reset Match
+                      {scoring[match.id] ? <Loader2 className="w-4 h-4 animate-spin" /> : <Zap className="w-4 h-4" />}
+                      Score Fantasy
                     </button>
+
+                    {match.status !== 'completed' && match.status !== 'no_result' && (
+                      <button
+                        onClick={() => markNoResult(match.id)}
+                        disabled={noResulting[match.id]}
+                        className="flex items-center gap-2 px-5 py-2.5 rounded-xl text-sm font-bold bg-yellow-500/10 text-yellow-400 border border-yellow-500/20 hover:bg-yellow-500/20 transition-colors disabled:opacity-50"
+                      >
+                        {noResulting[match.id] ? <Loader2 className="w-4 h-4 animate-spin" /> : <CloudRain className="w-4 h-4" />}
+                        No Result
+                      </button>
+                    )}
                   </div>
                 </div>
               )}
@@ -269,8 +289,8 @@ export default function AdminResults() {
           )
         })}
 
-        {visibleMatches.length === 0 && (
-          <div className="text-center py-12 text-dark-muted text-sm">No {tab} matches.</div>
+        {matches.length === 0 && (
+          <div className="text-center py-12 text-dark-muted text-sm">No matches yet.</div>
         )}
       </div>
     </div>

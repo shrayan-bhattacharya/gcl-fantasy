@@ -1,6 +1,6 @@
 export type Json = string | number | boolean | null | { [key: string]: Json | undefined } | Json[]
 
-export type MatchStatus = 'upcoming' | 'live' | 'completed'
+export type MatchStatus = 'upcoming' | 'live' | 'completed' | 'no_result'
 export type PlayerRole = 'batsman' | 'bowler' | 'allrounder' | 'wicketkeeper'
 export type IPLTeam = 'CSK' | 'MI' | 'RCB' | 'KKR' | 'DC' | 'SRH' | 'PBKS' | 'RR' | 'LSG' | 'GT'
 
