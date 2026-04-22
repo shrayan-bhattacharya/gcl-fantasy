@@ -12,7 +12,7 @@ export default async function MatchesPage() {
     supabase.from('predictions')
       .select('id, match_id, predicted_match_winner, predicted_toss_winner, points_earned, is_scored')
       .eq('user_id', user!.id),
-    supabase.from('prediction_window').select('is_open').limit(1).single(),
+    supabase.from('prediction_window').select('is_open, opened_at').limit(1).single(),
   ])
 
   return (
@@ -21,6 +21,7 @@ export default async function MatchesPage() {
       userPredictions={predictions ?? []}
       userId={user!.id}
       predictionWindowOpen={predWindow?.is_open ?? true}
+      predWindowOpenedAt={predWindow?.opened_at ?? null}
     />
   )
 }

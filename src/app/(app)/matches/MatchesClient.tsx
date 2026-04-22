@@ -23,6 +23,7 @@ interface Props {
   userPredictions: PredictionRow[]
   userId: string
   predictionWindowOpen: boolean
+  predWindowOpenedAt: string | null
 }
 
 interface DayGroup {
@@ -43,6 +44,7 @@ interface MatchCardProps {
   dayIsLocked: boolean
   matchDeadlinePassed: boolean
   predWindowOpen: boolean
+  predWindowOpenedAt: string | null
   existing: PredictionRow | undefined
   confirmedWinner: IPLTeam | undefined
   pickedWinner: IPLTeam | null
@@ -52,12 +54,19 @@ interface MatchCardProps {
 }
 
 const MatchCard = memo(function MatchCard({
-  match, dayIsLocked, matchDeadlinePassed, predWindowOpen,
+  match, dayIsLocked, matchDeadlinePassed, predWindowOpen, predWindowOpenedAt,
   existing, confirmedWinner, pickedWinner, isSaving,
   onSetPick, onSubmitPrediction,
 }: MatchCardProps) {
   const isNoResult = match.status === 'no_result'
-  const isLocked = !predWindowOpen || dayIsLocked || matchDeadlinePassed || match.status === 'completed' || isNoResult
+  // Admin override: if window was opened AFTER this match's deadline, skip deadline check
+  const adminOverride =
+    predWindowOpen &&
+    !!predWindowOpenedAt &&
+    !!match.prediction_deadline &&
+    new Date(predWindowOpenedAt) > new Date(match.prediction_deadline)
+  const effectiveDeadlinePassed = adminOverride ? false : matchDeadlinePassed
+  const isLocked = !predWindowOpen || dayIsLocked || effectiveDeadlinePassed || match.status === 'completed' || isNoResult
   const hasSaved = !!confirmedWinner
   const lockReason = !predWindowOpen
     ? 'Predictions are closed today'
@@ -228,12 +237,13 @@ interface DaySectionProps {
   saving: string | null
   predMap: Record<string, PredictionRow>
   predWindowOpen: boolean
+  predWindowOpenedAt: string | null
   onSetPick: (matchId: string, team: IPLTeam) => void
   onSubmitPrediction: (matchId: string, winner: IPLTeam) => void
 }
 
 function DaySection({
-  group, confirmed, picks, saving, predMap, predWindowOpen,
+  group, confirmed, picks, saving, predMap, predWindowOpen, predWindowOpenedAt,
   onSetPick, onSubmitPrediction,
 }: DaySectionProps) {
   const [now, setNow] = useState(() => new Date())
@@ -298,6 +308,7 @@ function DaySection({
             dayIsLocked={isLocked}
             matchDeadlinePassed={!!m.prediction_deadline && now >= new Date(m.prediction_deadline)}
             predWindowOpen={predWindowOpen}
+            predWindowOpenedAt={predWindowOpenedAt}
             existing={predMap[m.id]}
             confirmedWinner={confirmed[m.id]}
             pickedWinner={picks[m.id] ?? null}
@@ -313,7 +324,7 @@ function DaySection({
 
 // ─── MatchesClient ─────────────────────────────────────────────────────────
 
-export function MatchesClient({ matches, userPredictions, userId, predictionWindowOpen }: Props) {
+export function MatchesClient({ matches, userPredictions, userId, predictionWindowOpen, predWindowOpenedAt }: Props) {
   const [picks, setPicks] = useState<Record<string, IPLTeam | null>>({})
   const [confirmed, setConfirmed] = useState<Record<string, IPLTeam>>(() =>
     Object.fromEntries(userPredictions.map(p => [p.match_id, p.predicted_match_winner]))
@@ -453,6 +464,7 @@ export function MatchesClient({ matches, userPredictions, userId, predictionWind
               saving={saving}
               predMap={predMap}
               predWindowOpen={predictionWindowOpen}
+              predWindowOpenedAt={predWindowOpenedAt}
               onSetPick={handleSetPick}
               onSubmitPrediction={handleSubmitPrediction}
             />
@@ -479,6 +491,7 @@ export function MatchesClient({ matches, userPredictions, userId, predictionWind
               saving={saving}
               predMap={predMap}
               predWindowOpen={predictionWindowOpen}
+              predWindowOpenedAt={predWindowOpenedAt}
               onSetPick={handleSetPick}
               onSubmitPrediction={handleSubmitPrediction}
             />

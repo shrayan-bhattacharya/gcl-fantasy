@@ -15,13 +15,13 @@ export async function GET(request: Request) {
 
   const supabase = createServiceClient()
 
-  // Find matches that ended 5+ hours ago and haven't been successfully synced
-  const fiveHoursAgo = new Date(Date.now() - 5 * 60 * 60 * 1000).toISOString()
+  // Find matches that started 4+ hours ago and haven't been successfully synced
+  const fourHoursAgo = new Date(Date.now() - 4 * 60 * 60 * 1000).toISOString()
 
   const { data: matches, error } = await supabase
     .from('matches')
     .select('id, team_a, team_b, match_date, sync_status')
-    .lt('match_date', fiveHoursAgo)
+    .lte('match_date', fourHoursAgo)
     .neq('status', 'completed')
     .or('sync_status.is.null,sync_status.eq.failed')
     .order('match_date', { ascending: true })

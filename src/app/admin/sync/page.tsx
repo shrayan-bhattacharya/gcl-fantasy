@@ -75,11 +75,11 @@ export default function SyncPage() {
   }, [])
 
   async function loadPending() {
-    const fiveHoursAgo = new Date(Date.now() - 5 * 60 * 60 * 1000).toISOString()
+    const fourHoursAgo = new Date(Date.now() - 4 * 60 * 60 * 1000).toISOString()
     const { data } = await supabase
       .from('matches')
       .select('id, team_a, team_b, match_date, status, sync_status, sync_error')
-      .lt('match_date', fiveHoursAgo)
+      .lte('match_date', fourHoursAgo)
       .order('match_date', { ascending: false })
     setPendingMatches(data ?? [])
   }
