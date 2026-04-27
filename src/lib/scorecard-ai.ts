@@ -18,26 +18,29 @@ export interface TargetPlayer {
   role?: string   // 'batsman' | 'bowler' | 'allrounder' | 'wicketkeeper'
 }
 
-// Tool schema — only runs + wickets needed for scoring
-export const SCORECARD_TOOL = {
-  name: 'submit_scorecard',
-  description: 'Submit the extracted match result and player stats.',
-  input_schema: {
-    type: 'object' as const,
-    required: ['match_winner', 'confidence', 'players'],
-    properties: {
-      match_winner: { type: 'string', description: 'Winning team abbreviation (MI, KKR, RCB, CSK, DC, SRH, PBKS, RR, LSG, GT)' },
-      confidence: { type: 'string', enum: ['high', 'medium', 'low'], description: 'high = found actual scorecard, medium = from match report, low = uncertain' },
-      players: {
-        type: 'array',
-        items: {
-          type: 'object',
-          required: ['name', 'team', 'runs', 'wickets'],
-          properties: {
-            name: { type: 'string' },
-            team: { type: 'string' },
-            runs: { type: 'number' },
-            wickets: { type: 'number' },
+// OpenAI function-calling schema for extraction step
+const SCORECARD_FUNCTION = {
+  type: 'function' as const,
+  function: {
+    name: 'submit_scorecard',
+    description: 'Submit the extracted match result and player stats.',
+    parameters: {
+      type: 'object' as const,
+      required: ['match_winner', 'confidence', 'players'],
+      properties: {
+        match_winner: { type: 'string', description: 'Winning team abbreviation (MI, KKR, RCB, CSK, DC, SRH, PBKS, RR, LSG, GT)' },
+        confidence: { type: 'string', enum: ['high', 'medium', 'low'], description: 'high = found actual scorecard, medium = from match report, low = uncertain' },
+        players: {
+          type: 'array',
+          items: {
+            type: 'object',
+            required: ['name', 'team', 'runs', 'wickets'],
+            properties: {
+              name: { type: 'string' },
+              team: { type: 'string' },
+              runs: { type: 'number', description: 'Runs scored while batting (all players can bat, including bowlers)' },
+              wickets: { type: 'number', description: 'Wickets taken while bowling (0 for pure batsmen)' },
+            },
           },
         },
       },
@@ -46,38 +49,33 @@ export const SCORECARD_TOOL = {
 }
 
 function getKey() {
-  const key = process.env.ANTHROPIC_API_KEY
-  if (!key) throw new Error('ANTHROPIC_API_KEY not set')
+  const key = process.env.OPENAI_API_KEY
+  if (!key) throw new Error('OPENAI_API_KEY not set')
   return key
 }
 
-async function callAnthropic(key: string, body: Record<string, unknown>, beta?: string) {
-  const headers: Record<string, string> = {
-    'x-api-key': key,
-    'anthropic-version': '2023-06-01',
-    'content-type': 'application/json',
-  }
-  if (beta) headers['anthropic-beta'] = beta
-
-  const res = await fetch('https://api.anthropic.com/v1/messages', {
+async function callOpenAI(url: string, key: string, body: Record<string, unknown>) {
+  const res = await fetch(url, {
     method: 'POST',
-    headers,
+    headers: {
+      'Authorization': `Bearer ${key}`,
+      'Content-Type': 'application/json',
+    },
     body: JSON.stringify(body),
   })
 
-  // Always read as text first to avoid JSON parse errors on error responses
   const text = await res.text()
   if (!res.ok) {
-    throw new Error(`Anthropic API ${res.status}: ${text.slice(0, 300)}`)
+    throw new Error(`OpenAI API ${res.status}: ${text.slice(0, 300)}`)
   }
   try {
     return JSON.parse(text)
   } catch {
-    throw new Error(`Anthropic returned non-JSON: ${text.slice(0, 300)}`)
+    throw new Error(`OpenAI returned non-JSON: ${text.slice(0, 300)}`)
   }
 }
 
-/** Step 1: Search web for match result + stats for specific players only */
+/** Step 1: Search web for match result + stats using GPT-4o Responses API */
 export async function searchScorecard(
   teamA: string,
   teamB: string,
@@ -93,34 +91,34 @@ export async function searchScorecard(
     .filter(p => p.role === 'bowler' || p.role === 'allrounder')
     .map(p => `${p.name} (${p.team})`).join(', ') || 'none'
 
-  const data = await callAnthropic(key, {
-    model: 'claude-sonnet-4-6',
-    max_tokens: 4096,
-    tools: [{ type: 'web_search_20250305', name: 'web_search', max_uses: 5 }],
-    messages: [{
-      role: 'user',
-      content: `Search for the IPL 2026 match: ${teamA} vs ${teamB} on ${dateStr}.
+  const data = await callOpenAI('https://api.openai.com/v1/responses', key, {
+    model: 'gpt-4o',
+    tools: [{ type: 'web_search_preview', search_context_size: 'high' }],
+    input: `Search for the IPL 2026 cricket match: ${teamA} vs ${teamB} on ${dateStr}.
 
-I need stats for these players: ${allPlayers}
+I need COMPLETE stats for these players: ${allPlayers}
 
-Do TWO focused searches:
-1. Full batting scorecard — find runs scored by ALL players listed above (bowlers can also bat and score runs like 11, 7, 15 etc.)
-2. Bowling figures — find wickets taken by: ${bowlers}
+Search for:
+1. Full batting scorecard — runs scored by ALL players (bowlers also bat and can score runs like 11, 7, 15 etc.)
+2. Bowling figures — wickets taken by: ${bowlers}
 
 IMPORTANT: Report BOTH runs scored (batting) AND wickets taken (bowling) for EVERY player. Bowlers often bat lower in the order and score runs — do NOT skip their batting runs.
 
 Report the match winner and each player's exact runs and wickets.`,
-    }],
-  }, 'web-search-2025-03-05')
+  })
 
-  console.log('[search] stop_reason:', data.stop_reason)
-  const textBlocks = (data.content ?? []).filter((b: any) => b.type === 'text')
-  const narrative = textBlocks.map((b: any) => b.text).join('\n')
+  // Extract text from Responses API output
+  const messageBlock = (data.output ?? []).find((b: any) => b.type === 'message')
+  if (!messageBlock) throw new Error('No message in search response')
+  const textContent = (messageBlock.content ?? []).find((c: any) => c.type === 'output_text')
+  const narrative = textContent?.text ?? ''
   if (!narrative.length) throw new Error('No text in search response')
+
+  console.log('[search] status:', data.status, 'narrative length:', narrative.length)
   return narrative
 }
 
-/** Step 2: Extract structured stats from narrative for specific players only */
+/** Step 2: Extract structured stats from narrative using GPT-4o Chat Completions */
 export async function extractFromNarrative(
   narrative: string,
   targetPlayers: TargetPlayer[],
@@ -130,11 +128,8 @@ export async function extractFromNarrative(
     .map(p => p.role ? `${p.name} (${p.team}, ${p.role})` : `${p.name} (${p.team})`)
     .join(', ')
 
-  const data = await callAnthropic(key, {
-    model: 'claude-sonnet-4-6',
-    max_tokens: 2048,
-    tools: [SCORECARD_TOOL],
-    tool_choice: { type: 'tool', name: 'submit_scorecard' },
+  const data = await callOpenAI('https://api.openai.com/v1/chat/completions', key, {
+    model: 'gpt-4o',
     messages: [{
       role: 'user',
       content: `Extract from this cricket match report and call submit_scorecard.
@@ -151,16 +146,18 @@ Set confidence to "high" if you see actual numbers, "medium" if approximate, "lo
 MATCH REPORT:
 ${narrative}`,
     }],
+    tools: [SCORECARD_FUNCTION],
+    tool_choice: { type: 'function', function: { name: 'submit_scorecard' } },
   })
 
-  console.log('[extract] stop_reason:', data.stop_reason)
-  const toolBlock = (data.content ?? []).find(
-    (b: any) => b.type === 'tool_use' && b.name === 'submit_scorecard'
-  )
-  if (!toolBlock) throw new Error(`No tool_use in extract response`)
+  const choice = data.choices?.[0]
+  const toolCall = choice?.message?.tool_calls?.[0]
+  if (!toolCall || toolCall.function.name !== 'submit_scorecard') {
+    throw new Error('No submit_scorecard tool call in extract response')
+  }
 
-  const result = toolBlock.input as Omit<ScorecardResult, 'missing'>
-  console.log('[extract] players:', result.players?.length ?? 0, 'winner:', result.match_winner)
+  const result = JSON.parse(toolCall.function.arguments) as Omit<ScorecardResult, 'missing'>
+  console.log('[extract] players:', result.players?.length ?? 0, 'winner:', result.match_winner, 'confidence:', result.confidence)
 
   // Verification: find which target players were not returned in the extraction
   const foundNames = new Set((result.players ?? []).map((p: PlayerStat) => p.name.toLowerCase()))
