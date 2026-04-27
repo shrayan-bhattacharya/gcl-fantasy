@@ -38,8 +38,8 @@ const SCORECARD_FUNCTION = {
             properties: {
               name: { type: 'string' },
               team: { type: 'string' },
-              runs: { type: 'number', description: 'Runs scored while batting (all players can bat, including bowlers)' },
-              wickets: { type: 'number', description: 'Wickets taken while bowling (0 for pure batsmen)' },
+              runs: { type: 'number', description: 'Runs scored while batting (all players can bat, including bowlers). 0 if did not bat.' },
+              wickets: { type: 'number', description: 'Wickets taken while bowling (0 if did not bowl or pure batsman)' },
             },
           },
         },
@@ -75,7 +75,7 @@ async function callOpenAI(url: string, key: string, body: Record<string, unknown
   }
 }
 
-/** Step 1: Search web for match result + stats using GPT-4o Responses API */
+/** Step 1: Search web for match scorecard using GPT-4.1 Responses API */
 export async function searchScorecard(
   teamA: string,
   teamB: string,
@@ -86,25 +86,42 @@ export async function searchScorecard(
   const dateStr = new Date(matchDate).toLocaleDateString('en-IN', {
     day: 'numeric', month: 'long', year: 'numeric',
   })
-  const allPlayers = targetPlayers.map(p => `${p.name} (${p.team})`).join(', ')
+
+  // Build player list grouped by role for clear instructions
+  const batsmen = targetPlayers
+    .filter(p => p.role === 'batsman' || p.role === 'wicketkeeper')
+    .map(p => `${p.name} (${p.team})`)
   const bowlers = targetPlayers
-    .filter(p => p.role === 'bowler' || p.role === 'allrounder')
-    .map(p => `${p.name} (${p.team})`).join(', ') || 'none'
+    .filter(p => p.role === 'bowler')
+    .map(p => `${p.name} (${p.team})`)
+  const allrounders = targetPlayers
+    .filter(p => p.role === 'allrounder')
+    .map(p => `${p.name} (${p.team})`)
+  const allPlayers = targetPlayers.map(p => `${p.name} (${p.team})`).join(', ')
 
   const data = await callOpenAI('https://api.openai.com/v1/responses', key, {
-    model: 'gpt-4o',
+    model: 'gpt-4.1',
     tools: [{ type: 'web_search_preview', search_context_size: 'high' }],
-    input: `Search for the IPL 2026 cricket match: ${teamA} vs ${teamB} on ${dateStr}.
+    instructions: 'You MUST do at least 2 separate web searches to find complete batting AND bowling data. Search for full scorecard pages on thesportstak.com, espncricinfo.com, ndtv sports, or cricbuzz.com. Only report numbers you actually see on the scorecard. Never guess.',
+    input: `I need the full scorecard of IPL 2026 match: ${teamA} vs ${teamB} on ${dateStr}.
 
-I need COMPLETE stats for these players: ${allPlayers}
+Do these searches:
+1. Search: "${teamA} vs ${teamB} IPL 2026 full batting scorecard"
+2. Search: "${teamA} vs ${teamB} IPL 2026 bowling figures scorecard"
 
-Search for:
-1. Full batting scorecard — runs scored by ALL players (bowlers also bat and can score runs like 11, 7, 15 etc.)
-2. Bowling figures — wickets taken by: ${bowlers}
+I need EXACT stats for these players: ${allPlayers}
 
-IMPORTANT: Report BOTH runs scored (batting) AND wickets taken (bowling) for EVERY player. Bowlers often bat lower in the order and score runs — do NOT skip their batting runs.
+${batsmen.length ? `BATSMEN (report runs scored, and 0 wickets): ${batsmen.join(', ')}` : ''}
+${bowlers.length ? `BOWLERS (report bowling wickets AND batting runs if they batted): ${bowlers.join(', ')}` : ''}
+${allrounders.length ? `ALL-ROUNDERS (report both batting runs AND bowling wickets): ${allrounders.join(', ')}` : ''}
 
-Report the match winner and each player's exact runs and wickets.`,
+For EACH player report:
+- Batting: exact runs scored (from batting scorecard). Write "DNB" if did not bat.
+- Bowling: exact overs-runs-wickets (from bowling figures). Write "did not bowl" if they didn't bowl.
+
+Also report the match winner.
+
+CRITICAL: Copy numbers EXACTLY from the scorecard tables. If a bowler did not bat, their runs = 0. If a batsman did not bowl, their wickets = 0.`,
   })
 
   // Extract text from Responses API output
@@ -114,11 +131,11 @@ Report the match winner and each player's exact runs and wickets.`,
   const narrative = textContent?.text ?? ''
   if (!narrative.length) throw new Error('No text in search response')
 
-  console.log('[search] status:', data.status, 'narrative length:', narrative.length)
+  console.log('[search] model:', data.model, 'status:', data.status, 'narrative length:', narrative.length)
   return narrative
 }
 
-/** Step 2: Extract structured stats from narrative using GPT-4o Chat Completions */
+/** Step 2: Extract structured stats from narrative using GPT-4.1 Chat Completions */
 export async function extractFromNarrative(
   narrative: string,
   targetPlayers: TargetPlayer[],
@@ -129,19 +146,22 @@ export async function extractFromNarrative(
     .join(', ')
 
   const data = await callOpenAI('https://api.openai.com/v1/chat/completions', key, {
-    model: 'gpt-4o',
+    model: 'gpt-4.1',
     messages: [{
+      role: 'system',
+      content: 'You extract exact cricket stats from match reports. Only use numbers explicitly stated in the report. If a stat is not mentioned, use 0. Never invent or estimate numbers.',
+    }, {
       role: 'user',
-      content: `Extract from this cricket match report and call submit_scorecard.
+      content: `Extract stats from this match report and call submit_scorecard.
 
-Find stats for ONLY these players: ${playerList}
+Players to find: ${playerList}
 
-For each player report:
-- runs: total runs scored while BATTING (even bowlers bat — if a bowler scored 7, 11, 15 etc. include those runs)
-- wickets: total wickets taken while BOWLING (0 if they are a pure batsman)
-
-Use 0 if they didn't bat or didn't bowl. Do NOT skip bowler batting runs.
-Set confidence to "high" if you see actual numbers, "medium" if approximate, "low" if not found.
+Rules:
+- runs = batting runs from scorecard. If "DNB" or "did not bat" → 0
+- wickets = bowling wickets from figures. If "did not bowl" → 0
+- Bowlers CAN bat: if a bowler scored runs, include them
+- confidence = "high" if actual scorecard numbers found, "medium" if approximate, "low" if stats not found
+- match_winner = team abbreviation (CSK, MI, RCB, KKR, DC, SRH, PBKS, RR, LSG, GT)
 
 MATCH REPORT:
 ${narrative}`,
