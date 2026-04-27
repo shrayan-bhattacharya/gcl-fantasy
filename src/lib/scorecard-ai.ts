@@ -51,21 +51,30 @@ function getKey() {
   return key
 }
 
-async function callAnthropic(key: string, body: Record<string, unknown>) {
+async function callAnthropic(key: string, body: Record<string, unknown>, beta?: string) {
+  const headers: Record<string, string> = {
+    'x-api-key': key,
+    'anthropic-version': '2023-06-01',
+    'content-type': 'application/json',
+  }
+  if (beta) headers['anthropic-beta'] = beta
+
   const res = await fetch('https://api.anthropic.com/v1/messages', {
     method: 'POST',
-    headers: {
-      'x-api-key': key,
-      'anthropic-version': '2023-06-01',
-      'content-type': 'application/json',
-    },
+    headers,
     body: JSON.stringify(body),
   })
+
+  // Always read as text first to avoid JSON parse errors on error responses
+  const text = await res.text()
   if (!res.ok) {
-    const text = await res.text()
-    throw new Error(`Anthropic API ${res.status}: ${text.slice(0, 200)}`)
+    throw new Error(`Anthropic API ${res.status}: ${text.slice(0, 300)}`)
   }
-  return res.json()
+  try {
+    return JSON.parse(text)
+  } catch {
+    throw new Error(`Anthropic returned non-JSON: ${text.slice(0, 300)}`)
+  }
 }
 
 /** Step 1: Search web for match result + stats for specific players only */
@@ -102,7 +111,7 @@ IMPORTANT: Report BOTH runs scored (batting) AND wickets taken (bowling) for EVE
 
 Report the match winner and each player's exact runs and wickets.`,
     }],
-  })
+  }, 'web-search-2025-03-05')
 
   console.log('[search] stop_reason:', data.stop_reason)
   const textBlocks = (data.content ?? []).filter((b: any) => b.type === 'text')
