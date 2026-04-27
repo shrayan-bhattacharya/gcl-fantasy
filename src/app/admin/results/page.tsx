@@ -5,7 +5,7 @@ import { createClient } from '@/lib/supabase/client'
 import { IPL_TEAMS, ROLE_ICONS } from '@/constants/ipl'
 import { TeamLogo } from '@/components/ui/TeamLogo'
 import { formatMatchDate } from '@/lib/utils'
-import { Loader2, CheckCircle, ChevronDown, ChevronUp, Zap, CloudRain } from 'lucide-react'
+import { Loader2, CheckCircle, ChevronDown, ChevronUp, CloudRain } from 'lucide-react'
 import type { Database } from '@/types/database.types'
 
 type Match = Database['public']['Tables']['matches']['Row']
@@ -28,7 +28,6 @@ export default function AdminResults() {
   const [stats, setStats] = useState<Record<string, Record<string, PlayerStat>>>({})
   const [isPending, startTransition] = useTransition()
   const [saved, setSaved] = useState<Record<string, boolean>>({})
-  const [scoring, setScoring] = useState<Record<string, boolean>>({})
   const [noResulting, setNoResulting] = useState<Record<string, boolean>>({})
 
   useEffect(() => { loadData() }, [])
@@ -132,23 +131,6 @@ export default function AdminResults() {
       alert('Error: ' + (e?.message ?? String(e)))
     }
     setNoResulting(prev => ({ ...prev, [matchId]: false }))
-  }
-
-  async function triggerFantasyScoring(matchId: string) {
-    setScoring(prev => ({ ...prev, [matchId]: true }))
-    try {
-      const res = await fetch('/api/scoring', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ matchId }),
-      })
-      const result = await res.json()
-      if (result.success) alert(`Fantasy scoring complete! Processed ${result.teamsScored} teams.`)
-      else alert('Scoring failed: ' + (result.error ?? 'Unknown error'))
-    } catch {
-      alert('Failed to trigger scoring')
-    }
-    setScoring(prev => ({ ...prev, [matchId]: false }))
   }
 
   return (
@@ -260,16 +242,7 @@ export default function AdminResults() {
                         }`}
                     >
                       {isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : saved[match.id] ? <CheckCircle className="w-4 h-4" /> : null}
-                      {saved[match.id] ? 'Saved!' : 'Save Results'}
-                    </button>
-
-                    <button
-                      onClick={() => triggerFantasyScoring(match.id)}
-                      disabled={scoring[match.id] || match.status !== 'completed'}
-                      className="flex items-center gap-2 px-5 py-2.5 rounded-xl text-sm font-bold bg-neon-cyan/10 text-neon-cyan border border-neon-cyan/20 hover:bg-neon-cyan/20 transition-colors disabled:opacity-50"
-                    >
-                      {scoring[match.id] ? <Loader2 className="w-4 h-4 animate-spin" /> : <Zap className="w-4 h-4" />}
-                      Score Fantasy
+                      {saved[match.id] ? 'Saved & Scored!' : 'Save & Score'}
                     </button>
 
                     {match.status !== 'completed' && match.status !== 'no_result' && (
