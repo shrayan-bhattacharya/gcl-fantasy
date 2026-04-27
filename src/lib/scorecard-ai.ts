@@ -83,12 +83,9 @@ export async function searchScorecard(
   const bowlers = targetPlayers
     .filter(p => p.role === 'bowler' || p.role === 'allrounder')
     .map(p => `${p.name} (${p.team})`).join(', ') || 'none'
-  const batters = targetPlayers
-    .filter(p => p.role !== 'bowler')
-    .map(p => `${p.name} (${p.team})`).join(', ') || 'none'
 
   const data = await callAnthropic(key, {
-    model: 'claude-haiku-4-5-20251001',
+    model: 'claude-opus-4-0-20250514',
     max_tokens: 4096,
     tools: [{ type: 'web_search_20250305', name: 'web_search', max_uses: 5 }],
     messages: [{
@@ -98,8 +95,10 @@ export async function searchScorecard(
 I need stats for these players: ${allPlayers}
 
 Do TWO focused searches:
-1. Batting scorecard — find runs scored by: ${batters}
-2. Bowling scorecard — find wickets taken by: ${bowlers}
+1. Full batting scorecard — find runs scored by ALL players listed above (bowlers can also bat and score runs like 11, 7, 15 etc.)
+2. Bowling figures — find wickets taken by: ${bowlers}
+
+IMPORTANT: Report BOTH runs scored (batting) AND wickets taken (bowling) for EVERY player. Bowlers often bat lower in the order and score runs — do NOT skip their batting runs.
 
 Report the match winner and each player's exact runs and wickets.`,
     }],
@@ -133,7 +132,11 @@ export async function extractFromNarrative(
 
 Find stats for ONLY these players: ${playerList}
 
-For each player: runs scored (batting) and wickets taken (bowling). Use 0 if they didn't bat or bowl.
+For each player report:
+- runs: total runs scored while BATTING (even bowlers bat — if a bowler scored 7, 11, 15 etc. include those runs)
+- wickets: total wickets taken while BOWLING (0 if they are a pure batsman)
+
+Use 0 if they didn't bat or didn't bowl. Do NOT skip bowler batting runs.
 Set confidence to "high" if you see actual numbers, "medium" if approximate, "low" if not found.
 
 MATCH REPORT:

@@ -59,14 +59,16 @@ const MatchCard = memo(function MatchCard({
   onSetPick, onSubmitPrediction,
 }: MatchCardProps) {
   const isNoResult = match.status === 'no_result'
-  // Admin override: if window was opened AFTER this match's deadline, skip deadline check
+  // Admin override: if window was opened AFTER this match's deadline,
+  // skip BOTH the per-match deadline AND the day-level lock
   const adminOverride =
     predWindowOpen &&
     !!predWindowOpenedAt &&
     !!match.prediction_deadline &&
     new Date(predWindowOpenedAt) > new Date(match.prediction_deadline)
   const effectiveDeadlinePassed = adminOverride ? false : matchDeadlinePassed
-  const isLocked = !predWindowOpen || dayIsLocked || effectiveDeadlinePassed || match.status === 'completed' || isNoResult
+  const effectiveDayLocked = adminOverride ? false : dayIsLocked
+  const isLocked = !predWindowOpen || effectiveDayLocked || effectiveDeadlinePassed || match.status === 'completed' || isNoResult
   const hasSaved = !!confirmedWinner
   const lockReason = !predWindowOpen
     ? 'Predictions are closed today'
