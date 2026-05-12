@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { createClient } from '@/lib/supabase/client'
-import { CheckCircle, XCircle, Loader2, RefreshCw, AlertTriangle, Zap, Search, CloudRain } from 'lucide-react'
+import { CheckCircle, XCircle, Loader2, RefreshCw, AlertTriangle, Zap, Search, CloudRain, Edit3, Trash2 } from 'lucide-react'
 
 interface SyncResult {
   ok: boolean
@@ -11,6 +11,21 @@ interface SyncResult {
   detail?: string
   missing?: string[]   // players whose stats could not be found by AI
   raw?: any
+}
+
+interface StagedPlayer {
+  name: string
+  team: string
+  runs: number
+  wickets: number
+}
+
+interface StagedScorecard {
+  match_id: string
+  proposed_winner: string | null
+  confidence: 'high' | 'medium' | 'low' | null
+  players: StagedPlayer[]
+  missing: string[]
 }
 
 function ResultBadge({ result }: { result: SyncResult }) {
@@ -63,6 +78,9 @@ export default function SyncPage() {
   const [retrying, setRetrying] = useState<Record<string, boolean>>({})
   const [syncStatus, setSyncStatus] = useState<Record<string, string>>({})
   const [noResulting, setNoResulting] = useState<Record<string, boolean>>({})
+  // Staged scorecards awaiting admin review (keyed by match_id)
+  const [staged, setStaged] = useState<Record<string, StagedScorecard>>({})
+  const [approving, setApproving] = useState<Record<string, boolean>>({})
 
   const IPL_TEAMS = ['CSK', 'MI', 'RCB', 'KKR', 'DC', 'SRH', 'PBKS', 'RR', 'LSG', 'GT']
   const [pickTeamA, setPickTeamA] = useState('MI')
@@ -82,6 +100,102 @@ export default function SyncPage() {
       .lte('match_date', fourHoursAgo)
       .order('match_date', { ascending: false })
     setPendingMatches(data ?? [])
+
+    // Load any staged scorecards awaiting approval
+    const matchIds = (data ?? []).map((m: any) => m.id)
+    if (matchIds.length) {
+      const { data: stagedRows } = await supabase
+        .from('pending_scorecards')
+        .select('match_id, proposed_winner, confidence, players, missing')
+        .in('match_id', matchIds)
+        .eq('status', 'pending')
+      const map: Record<string, StagedScorecard> = {}
+      for (const row of stagedRows ?? []) {
+        map[row.match_id] = {
+          match_id: row.match_id,
+          proposed_winner: row.proposed_winner,
+          confidence: row.confidence,
+          players: row.players ?? [],
+          missing: row.missing ?? [],
+        }
+      }
+      setStaged(map)
+    }
+  }
+
+  function updateStagedPlayer(matchId: string, idx: number, field: 'runs' | 'wickets', value: number) {
+    setStaged(prev => {
+      const sc = prev[matchId]
+      if (!sc) return prev
+      const newPlayers = [...sc.players]
+      newPlayers[idx] = { ...newPlayers[idx], [field]: value }
+      return { ...prev, [matchId]: { ...sc, players: newPlayers } }
+    })
+  }
+
+  function updateStagedWinner(matchId: string, winner: string) {
+    setStaged(prev => {
+      const sc = prev[matchId]
+      if (!sc) return prev
+      return { ...prev, [matchId]: { ...sc, proposed_winner: winner } }
+    })
+  }
+
+  async function approveScorecard(matchId: string) {
+    const sc = staged[matchId]
+    if (!sc) return
+    if (!sc.proposed_winner) { alert('Pick a match winner before approving'); return }
+    setApproving(prev => ({ ...prev, [matchId]: true }))
+    try {
+      const res = await fetch('/api/sync/approve-scorecard', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          matchId,
+          editedPlayers: sc.players,
+          editedWinner: sc.proposed_winner,
+        }),
+      })
+      const json = await res.json()
+      if (!res.ok) {
+        setRetryResults(prev => ({ ...prev, [matchId]: { ok: false, message: 'Approve failed', detail: json.error } }))
+      } else {
+        setRetryResults(prev => ({ ...prev, [matchId]: {
+          ok: true,
+          message: `Approved — ${json.statsUpserted} players · ${json.fantasyTeamsScored} teams scored`,
+          raw: json,
+        }}))
+        // Remove from staged map
+        setStaged(prev => {
+          const next = { ...prev }
+          delete next[matchId]
+          return next
+        })
+        loadPending()
+      }
+    } catch (e: any) {
+      setRetryResults(prev => ({ ...prev, [matchId]: { ok: false, message: 'Approve failed', detail: e.message } }))
+    }
+    setApproving(prev => ({ ...prev, [matchId]: false }))
+  }
+
+  async function rejectScorecard(matchId: string) {
+    if (!confirm('Discard this AI extraction? You can re-sync afterwards.')) return
+    try {
+      await fetch('/api/sync/reject-scorecard', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ matchId }),
+      })
+      setStaged(prev => {
+        const next = { ...prev }
+        delete next[matchId]
+        return next
+      })
+      loadPending()
+    } catch (e: any) {
+      alert('Reject failed: ' + e.message)
+    }
   }
 
   async function retrySync(matchId: string) {
@@ -126,8 +240,8 @@ export default function SyncPage() {
       if (!extractRes.ok) throw new Error(extractJson.error || 'Extraction failed')
       const missingPlayers: string[] = extractJson.scorecard?.missing ?? []
 
-      // Step 3: Run scoring pipeline (server-side, fast)
-      setSyncStatus(prev => ({ ...prev, [matchId]: 'Step 3/3 — Scoring fantasy teams...' }))
+      // Step 3: Stage scorecard for admin review (does NOT apply scores)
+      setSyncStatus(prev => ({ ...prev, [matchId]: 'Step 3/3 — Staging for review...' }))
       const scoreRes = await fetch('/api/sync/scorecard-ai', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -135,15 +249,23 @@ export default function SyncPage() {
       })
       const scoreJson = await scoreRes.json()
       if (!scoreRes.ok) {
-        setRetryResults(prev => ({ ...prev, [matchId]: { ok: false, message: 'Scoring failed', detail: scoreJson.error, missing: missingPlayers, raw: scoreJson } }))
+        setRetryResults(prev => ({ ...prev, [matchId]: { ok: false, message: 'Staging failed', detail: scoreJson.error, missing: missingPlayers, raw: scoreJson } }))
       } else {
-        const unmatchedNote = scoreJson.unmatched?.length ? `${scoreJson.unmatched.length} unmatched: ${scoreJson.unmatched.join(', ')}` : undefined
+        // Save staged result for inline review/edit/approve
+        setStaged(prev => ({
+          ...prev,
+          [matchId]: {
+            match_id: matchId,
+            proposed_winner: scoreJson.proposed_winner,
+            confidence: scoreJson.confidence,
+            players: scoreJson.players ?? [],
+            missing: scoreJson.missing ?? [],
+          },
+        }))
         setRetryResults(prev => ({ ...prev, [matchId]: {
           ok: true,
-          message: `Synced — ${scoreJson.statsUpserted} players · ${scoreJson.fantasyTeamsScored} teams scored`,
-          detail: unmatchedNote,
+          message: `Staged — review and approve below (confidence: ${scoreJson.confidence})`,
           missing: missingPlayers,
-          raw: scoreJson,
         }}))
         loadPending()
       }
@@ -299,6 +421,107 @@ export default function SyncPage() {
                   <p className="text-xs text-red-400 opacity-80">{match.sync_error}</p>
                 )}
                 {retryResults[match.id] && <ResultBadge result={retryResults[match.id]!} />}
+
+                {/* Staged scorecard review — admin must approve before scores apply */}
+                {staged[match.id] && (
+                  <motion.div
+                    initial={{ opacity: 0, y: 6 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    className="mt-3 border border-neon-orange/30 bg-neon-orange/5 rounded-xl p-4 space-y-3"
+                  >
+                    <div className="flex items-center gap-2 text-xs">
+                      <Edit3 className="w-3.5 h-3.5 text-neon-orange" />
+                      <span className="text-neon-orange font-bold">Review before applying</span>
+                      <span className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase ${
+                        staged[match.id].confidence === 'high' ? 'bg-neon-green/10 text-neon-green' :
+                        staged[match.id].confidence === 'medium' ? 'bg-yellow-500/10 text-yellow-400' :
+                        'bg-red-500/10 text-red-400'
+                      }`}>
+                        {staged[match.id].confidence ?? 'unknown'} confidence
+                      </span>
+                    </div>
+
+                    {/* Winner picker */}
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs text-dark-muted shrink-0">Winner:</span>
+                      <select
+                        value={staged[match.id].proposed_winner ?? ''}
+                        onChange={e => updateStagedWinner(match.id, e.target.value)}
+                        className="bg-dark-card border border-dark-border rounded-lg px-2 py-1 text-white text-xs focus:outline-none focus:border-neon-orange/50"
+                      >
+                        <option value="">-- select --</option>
+                        <option value={match.team_a}>{match.team_a}</option>
+                        <option value={match.team_b}>{match.team_b}</option>
+                      </select>
+                    </div>
+
+                    {/* Editable player stats */}
+                    <div className="overflow-x-auto">
+                      <table className="w-full text-xs">
+                        <thead>
+                          <tr className="text-dark-muted border-b border-dark-border">
+                            <th className="text-left py-1.5 pr-3">Player</th>
+                            <th className="text-left py-1.5 pr-3">Team</th>
+                            <th className="text-right py-1.5 pr-3">Runs</th>
+                            <th className="text-right py-1.5">Wickets</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {staged[match.id].players.map((p, idx) => (
+                            <tr key={`${p.name}-${idx}`} className="border-b border-dark-border/30">
+                              <td className="py-1.5 pr-3 text-white">{p.name}</td>
+                              <td className="py-1.5 pr-3 text-dark-muted">{p.team}</td>
+                              <td className="py-1.5 pr-3 text-right">
+                                <input
+                                  type="number" min="0"
+                                  value={p.runs}
+                                  onChange={e => updateStagedPlayer(match.id, idx, 'runs', parseInt(e.target.value) || 0)}
+                                  className="w-14 bg-dark-card border border-dark-border rounded text-right text-white text-xs px-2 py-0.5 focus:outline-none focus:border-neon-orange/50 [appearance:textfield]"
+                                />
+                              </td>
+                              <td className="py-1.5 text-right">
+                                <input
+                                  type="number" min="0"
+                                  value={p.wickets}
+                                  onChange={e => updateStagedPlayer(match.id, idx, 'wickets', parseInt(e.target.value) || 0)}
+                                  className="w-14 bg-dark-card border border-dark-border rounded text-right text-white text-xs px-2 py-0.5 focus:outline-none focus:border-neon-orange/50 [appearance:textfield]"
+                                />
+                              </td>
+                            </tr>
+                          ))}
+                          {staged[match.id].players.length === 0 && (
+                            <tr><td colSpan={4} className="py-2 text-center text-dark-muted">No player stats extracted</td></tr>
+                          )}
+                        </tbody>
+                      </table>
+                    </div>
+
+                    {staged[match.id].missing.length > 0 && (
+                      <p className="text-[11px] text-yellow-400">
+                        Missing from extraction: {staged[match.id].missing.join(', ')}
+                      </p>
+                    )}
+
+                    <div className="flex items-center gap-2 pt-1">
+                      <button
+                        onClick={() => approveScorecard(match.id)}
+                        disabled={approving[match.id]}
+                        className="flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold bg-neon-green text-dark-base disabled:opacity-60 hover:brightness-110 transition-all"
+                      >
+                        {approving[match.id] ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <CheckCircle className="w-3.5 h-3.5" />}
+                        Approve &amp; Apply Scores
+                      </button>
+                      <button
+                        onClick={() => rejectScorecard(match.id)}
+                        disabled={approving[match.id]}
+                        className="flex items-center gap-2 px-3 py-2 rounded-xl text-xs font-bold bg-red-500/10 text-red-400 border border-red-500/20 hover:bg-red-500/20 transition-all"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                        Reject
+                      </button>
+                    </div>
+                  </motion.div>
+                )}
               </div>
             ))}
           </div>
@@ -421,10 +644,11 @@ export default function SyncPage() {
       <div className="glass border border-dark-border/50 rounded-2xl p-5 text-sm text-dark-muted space-y-2">
         <p className="text-white font-semibold text-sm">How it works</p>
         <ol className="list-decimal list-inside space-y-1 text-xs">
-          <li><strong className="text-white">Step 1</strong> — AI searches the web for the match scorecard (~30s)</li>
-          <li><strong className="text-white">Step 2</strong> — Extracts structured player stats from search results (~15s)</li>
-          <li><strong className="text-white">Step 3</strong> — Updates match result, player stats, fantasy scores, predictions (~5s)</li>
-          <li>If stats are wrong: <strong className="text-white">Enter Results</strong> → expand match → edit any field → save</li>
+          <li><strong className="text-white">Sync Now</strong> — AI searches for the scorecard and stages the proposed stats</li>
+          <li><strong className="text-white">Review</strong> — verify the numbers in the table, fix any wrong values inline</li>
+          <li><strong className="text-white">Approve &amp; Apply</strong> — only then are scores written to leaderboard, predictions, fantasy</li>
+          <li>If anything looks off: edit the cell or use <strong className="text-white">Reject</strong> + re-sync</li>
+          <li>AI can fail or hallucinate — admin approval is the safety gate. Never auto-applies.</li>
         </ol>
       </div>
     </div>

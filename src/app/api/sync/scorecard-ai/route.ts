@@ -1,6 +1,5 @@
 import { NextResponse } from 'next/server'
 import { createClient, createServiceClient } from '@/lib/supabase/server'
-import { runScoringPipeline } from '@/lib/scoring-pipeline'
 import type { ScorecardResult } from '@/lib/scorecard-ai'
 
 async function getAdminUser() {
@@ -12,6 +11,10 @@ async function getAdminUser() {
   return user
 }
 
+/**
+ * Stages the AI-extracted scorecard to `pending_scorecards`.
+ * Does NOT touch production tables — admin must review and approve.
+ */
 export async function POST(request: Request) {
   let matchId: string | null = null
   try {
@@ -25,34 +28,41 @@ export async function POST(request: Request) {
 
     const supabase = createServiceClient()
 
-    if (scorecard.confidence === 'low') {
-      await supabase.from('matches').update({
-        sync_status: 'failed',
-        sync_error: 'Low confidence extraction',
-      }).eq('id', matchId)
-      return NextResponse.json({
-        error: 'Low confidence — check raw data or enter manually via Enter Results',
-        confidence: 'low',
-        raw: scorecard,
-      }, { status: 422 })
+    // Upsert proposed scorecard into staging (one pending per match)
+    const { error: stageErr } = await supabase
+      .from('pending_scorecards')
+      .upsert({
+        match_id: matchId,
+        proposed_winner: scorecard.match_winner,
+        confidence: scorecard.confidence,
+        players: scorecard.players ?? [],
+        missing: scorecard.missing ?? [],
+        status: 'pending',
+        approved_at: null,
+        created_at: new Date().toISOString(),
+      }, { onConflict: 'match_id' })
+
+    if (stageErr) {
+      console.error('[scorecard-ai] stage error:', stageErr)
+      return NextResponse.json({ error: stageErr.message }, { status: 500 })
     }
 
-    const pipeline = await runScoringPipeline(matchId, scorecard)
-
+    // Mark sync_status as 'staged' so the UI knows there's a pending review
     await supabase.from('matches').update({
-      sync_status: 'synced',
-      sync_error: null,
-      synced_at: new Date().toISOString(),
+      sync_status: 'staged',
+      sync_error: scorecard.confidence === 'low' ? 'Low confidence — review before approving' : null,
     }).eq('id', matchId)
 
     return NextResponse.json({
-      ...pipeline,
-      matchWinner: scorecard.match_winner,
+      staged: true,
+      matchId,
+      proposed_winner: scorecard.match_winner,
       confidence: scorecard.confidence,
+      players: scorecard.players,
+      missing: scorecard.missing,
     })
   } catch (err: any) {
     console.error('[scorecard-ai] error:', err)
-
     if (matchId) {
       try {
         const supabase = createServiceClient()
@@ -62,7 +72,6 @@ export async function POST(request: Request) {
         }).eq('id', matchId)
       } catch { /* ignore */ }
     }
-
     return NextResponse.json({ error: err.message }, { status: 500 })
   }
 }
